@@ -97,6 +97,8 @@ test('自动与手动模式使用各自文案，仅注入启用的知识库', ()
   assert.ok(automatic.includes('原始口播')); assert.ok(manual.includes('人工修订口播'));
   assert.ok(!manual.includes('原始口播')); assert.ok(manual.includes('企业独特卖点'));
   assert.ok(!manual.includes('禁止注入的内容')); assert.ok(manual.includes('核心产品'));
+  const clearedVisual = buildUserPrompt({...base,editedTranscript:'人工口播',editedVisualSummary:''});
+  assert.ok(!clearedVisual.includes('原始画面'));
 });
 
 

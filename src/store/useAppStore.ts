@@ -239,7 +239,6 @@ export const useAppStore = create<AppState>()(
           return {
             streamingScriptText: version.scriptSnapshot,
             parsedScript: parseGeneratedScript(version.scriptSnapshot),
-            refinementHistory,
             conversationMessages: version.conversationMessages?.map((turn) => ({ ...turn })) || refinementHistory.flatMap((item) => [
               { role: 'user' as const, content: item.instruction },
               { role: 'assistant' as const, content: item.scriptSnapshot },
@@ -326,7 +325,7 @@ export const useAppStore = create<AppState>()(
           originalTranscript:
             state.editedTranscript || state.parsedVideo.transcript,
           visualSummary:
-            state.editedVisualSummary || state.parsedVideo.visualSummary,
+            state.editedVisualSummary,
           rawGeneratedScript: state.streamingScriptText,
           parsedStructure,
           refinementHistory: [...state.refinementHistory],

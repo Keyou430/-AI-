@@ -11,7 +11,7 @@ Object.assign(globalThis, {window: {localStorage: globalThis.localStorage}});
 
 const { useAppStore } = require('../src/store/useAppStore') as typeof import('../src/store/useAppStore');
 
-test('回退版本恢复脚本和完整上下文，并截断后续版本', () => {
+test('回退版本恢复脚本和完整上下文，同时保留全部历史版本', () => {
   const first = [{role:'user' as const,content:'第一轮完整提示词'},{role:'assistant' as const,content:'第一版'}];
   useAppStore.setState({refinementHistory:[],conversationMessages:first});
   useAppStore.getState().addRefinementVersion('初始生成','第一版');
@@ -20,7 +20,7 @@ test('回退版本恢复脚本和完整上下文，并截断后续版本', () =>
   useAppStore.getState().addRefinementVersion('第二轮指令','第二版');
   useAppStore.getState().rollbackToVersion(version);
   assert.equal(useAppStore.getState().streamingScriptText,'第一版');
-  assert.equal(useAppStore.getState().refinementHistory.length,1);
+  assert.equal(useAppStore.getState().refinementHistory.length,2);
   assert.deepEqual(useAppStore.getState().conversationMessages, first);
 });
 
