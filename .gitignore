@@ -1,0 +1,14 @@
+node_modules/
+dist/
+dist-electron/
+release/
+*.tsbuildinfo
+*.log
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite-*
+*.db
+.DS_Store
+Thumbs.db
