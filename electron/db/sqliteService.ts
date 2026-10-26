@@ -7,6 +7,7 @@
 
 import path from 'path';
 import fs from 'fs';
+import type { ParsedVideoData } from '../services/videoParser';
 
 export interface DBRefinementVersion {
   id: string;
@@ -25,6 +26,7 @@ export interface DBHistoryRecord {
   durationSec: number;
   userCameraWork: string;
   originalTranscript: string;
+  sourceContent?: ParsedVideoData;
   visualSummary: string;
   rawGeneratedScript: string;
   parsedStructure: any;
@@ -96,7 +98,8 @@ CREATE TABLE IF NOT EXISTS history_records (
   raw_generated_script TEXT NOT NULL,
   parsed_structure_json TEXT NOT NULL,
   refinement_history_json TEXT NOT NULL DEFAULT '[]',
-  conversation_messages_json TEXT NOT NULL DEFAULT '[]'
+  conversation_messages_json TEXT NOT NULL DEFAULT '[]',
+  source_content_json TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_history_created_at ON history_records(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_history_platform ON history_records(platform);
@@ -192,7 +195,7 @@ function buildSimpleParsedStructure(rawText: string, totalDurationSec: number) {
 }
 
 export class LocalSQLiteManager {
-  constructor(private readonly dataDirectory: string) {}
+  constructor(private readonly dataDirectory: string, private readonly onEngineFallback?: (error: unknown) => void, private readonly seedDemoData = true) {}
   private dbPath: string = '';
   private engine: 'better-sqlite3' | 'sqlite3-wasm' = 'sqlite3-wasm';
   private nativeDb: any = null;
@@ -215,6 +218,7 @@ export class LocalSQLiteManager {
     }
 
     this.dbPath = path.join(userDataDir, 'video-remix-history.sqlite');
+    const isNewDatabase = !fs.existsSync(this.dbPath);
 
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -229,8 +233,11 @@ export class LocalSQLiteManager {
       } catch {
         // column already exists
       }
+      try { this.nativeDb.exec('ALTER TABLE history_records ADD COLUMN source_content_json TEXT'); }
+      catch { /* column already exists */ }
       this.engine = 'better-sqlite3';
-    } catch {
+    } catch (error) {
+      this.onEngineFallback?.(error);
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const initSqlJs = require('sql.js');
       const SQL = await initSqlJs();
@@ -249,18 +256,16 @@ export class LocalSQLiteManager {
       } catch {
         // column already exists
       }
+      try { this.wasmDb.run('ALTER TABLE history_records ADD COLUMN source_content_json TEXT'); }
+      catch { /* column already exists */ }
       this.engine = 'sqlite3-wasm';
       this.flushWasmToDisk();
     }
 
-    const histCount = await this.getTableCount('history_records');
-    if (histCount === 0) {
+    // 已存在的空表可能是用户主动清空的，仅首次创建数据库时写入示例。
+    if (isNewDatabase && this.seedDemoData) {
       await this.seedInitialHistory();
-    }
-
-    const kbCount = await this.getTableCount('knowledge_documents');
-    if (kbCount === 0) {
-      await this.seedInitialKnowledgeDocs();
+      // 新设备知识库留空；已有数据库中的文档继续保留。
     }
   }
 
@@ -349,6 +354,11 @@ export class LocalSQLiteManager {
     let parsedStructure = {};
     let refinementHistory = [];
     let conversationMessages = [];
+    let sourceContent: ParsedVideoData | undefined;
+    try {
+      const parsed = JSON.parse(row.source_content_json || 'null');
+      if (parsed && typeof parsed === 'object' && typeof parsed.transcript === 'string') sourceContent = parsed;
+    } catch { /* Older records have no extraction snapshot. */ }
     try {
       parsedStructure = JSON.parse(row.parsed_structure_json || '{}');
     } catch {
@@ -374,6 +384,7 @@ export class LocalSQLiteManager {
       durationSec: Number(row.duration_sec || 18),
       userCameraWork: String(row.user_camera_work || ''),
       originalTranscript: String(row.original_transcript || ''),
+      ...(sourceContent ? { sourceContent } : {}),
       visualSummary: String(row.visual_summary || ''),
       rawGeneratedScript: String(row.raw_generated_script || ''),
       parsedStructure,
@@ -449,8 +460,9 @@ export class LocalSQLiteManager {
         raw_generated_script,
         parsed_structure_json,
         refinement_history_json,
-        conversation_messages_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        conversation_messages_json,
+        source_content_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const params = [
@@ -467,6 +479,7 @@ export class LocalSQLiteManager {
       JSON.stringify(record.parsedStructure || {}),
       JSON.stringify(record.refinementHistory || []),
       JSON.stringify(record.conversationMessages || []),
+      record.sourceContent ? JSON.stringify(record.sourceContent) : null,
     ];
 
     if (this.engine === 'better-sqlite3' && this.nativeDb) {

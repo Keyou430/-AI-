@@ -6,6 +6,7 @@
  */
 
 import OpenAI from 'openai';
+import { setTimeout as delay } from 'node:timers/promises';
 
 export interface LLMConnectionConfig {
   apiKey: string;
@@ -40,8 +41,11 @@ export const DEFAULT_HARDCODED_LLM_CONFIG: LLMConnectionConfig = {
 };
 
 export async function testLLMConnection(
-  config: LLMConnectionConfig
+  config: LLMConnectionConfig,
+  onError?: (error: unknown) => void,
+  signal?: AbortSignal
 ): Promise<{ success: boolean; message: string; latencyMs?: number }> {
+  signal?.throwIfAborted();
   const apiKey = config.apiKey?.trim() || DEFAULT_HARDCODED_LLM_CONFIG.apiKey;
   if (!apiKey) {
     return {
@@ -53,6 +57,7 @@ export async function testLLMConnection(
   const startTime = Date.now();
   try {
     const client = new OpenAI({
+      fetch: globalThis.fetch,
       apiKey,
       baseURL: config.baseURL?.trim() || DEFAULT_HARDCODED_LLM_CONFIG.baseURL,
     });
@@ -61,7 +66,7 @@ export async function testLLMConnection(
       model: config.model?.trim() || DEFAULT_HARDCODED_LLM_CONFIG.model,
       messages: [{ role: 'user', content: '请回复：连接成功' }],
       max_tokens: 16,
-    });
+    }, { signal });
 
     const latencyMs = Date.now() - startTime;
     const reply = response.choices?.[0]?.message?.content?.trim() || 'OK';
@@ -71,6 +76,8 @@ export async function testLLMConnection(
       message: `连接成功（模型：${config.model}，响应耗时 ${latencyMs}ms，返回：${reply}）`,
     };
   } catch (err: any) {
+    signal?.throwIfAborted();
+    onError?.(err);
     return {
       success: false,
       message: `连接失败：${err?.message || '请检查 API Key、Base URL 与网络环境'}`,
@@ -148,8 +155,10 @@ export function buildBusinessAlignedMockScript(params: {
 
 export async function streamGenerateScript(
   req: LLMGenerateRequest,
-  onChunk: (chunk: string) => void
+  onChunk: (chunk: string) => void,
+  signal?: AbortSignal
 ): Promise<string> {
+  signal?.throwIfAborted();
   const apiKey = req.config.apiKey?.trim() || DEFAULT_HARDCODED_LLM_CONFIG.apiKey;
 
   if (!req.enableMockFallback && !apiKey) {
@@ -158,6 +167,7 @@ export async function streamGenerateScript(
 
   if (!req.enableMockFallback) {
     const client = new OpenAI({
+      fetch: globalThis.fetch,
       apiKey,
       baseURL: req.config.baseURL?.trim() || DEFAULT_HARDCODED_LLM_CONFIG.baseURL,
     });
@@ -173,16 +183,18 @@ export async function streamGenerateScript(
       messages,
       temperature: 0.4,
       stream: true,
-    });
+    }, { signal });
 
     let fullText = '';
     for await (const part of stream) {
+      signal?.throwIfAborted();
       const delta = part.choices?.[0]?.delta?.content || '';
       if (delta) {
         fullText += delta;
         onChunk(delta);
       }
     }
+    signal?.throwIfAborted();
     return fullText;
   }
 
@@ -200,10 +212,11 @@ export async function streamGenerateScript(
   let accumulated = '';
   const step = 4;
   for (let i = 0; i < chars.length; i += step) {
+    signal?.throwIfAborted();
     const piece = chars.slice(i, i + step).join('');
     accumulated += piece;
     onChunk(piece);
-    await new Promise((r) => setTimeout(r, 24));
+    await delay(24, undefined, { signal });
   }
   return accumulated;
 }

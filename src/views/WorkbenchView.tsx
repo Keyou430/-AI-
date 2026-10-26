@@ -29,7 +29,9 @@ import {
   streamGenerateScriptClient,
 } from '../services/ipcClient';
 import { buildSystemPrompt, buildUserPrompt } from '../lib/promptBuilder';
-import { runScriptComplianceChecks } from '../lib/scriptParser';
+import { parseGeneratedScript, runScriptComplianceChecks } from '../lib/scriptParser';
+import type { HistoryRecord } from '../types';
+import { ExtractedContentDetails } from '../components/ExtractedContentDetails';
 import { OptimizeDialog } from '../components/OptimizeDialog';
 import { cn, formatDateTime } from '../lib/utils';
 
@@ -57,16 +59,11 @@ export const WorkbenchView: React.FC = () => {
     generateError,
     setGenerateError,
     streamingScriptText,
-    setStreamingScriptText,
     appendStreamingChunk,
     parsedScript,
-    conversationMessages,
-    setConversationMessages,
     refinementHistory,
-    addRefinementVersion,
     rollbackToVersion,
-    clearRefinementHistory,
-    saveCurrentToHistory,
+    saveGeneratedHistory,
     keywords,
     knowledgeDocs,
     settings,
@@ -114,74 +111,30 @@ export const WorkbenchView: React.FC = () => {
   // 模式一（手动分步模式）：仅提取原视频文案与画面描述，供人工编辑后再触发二创
   // ==========================================================================
   const handleExtractOnly = async () => {
-    setParseError(null);
-    setGenerateError(null);
-    setExtractNotice(null);
-    setIsParsingVideo(true);
-
-    const parseRes = await parseVideoLinkClient(linkInput, settings);
-    setIsParsingVideo(false);
-
-    if (!parseRes.success || !parseRes.data) {
-      setParseError(
-        parseRes.errorMessage || '解析视频链接失败，请检查链接有效性或 API 额度。'
-      );
-      return;
-    }
-
-    const videoData = parseRes.data;
-    setParsedVideo(videoData);
-    setTargetDurationSec(videoData.durationSec || 18);
-    if (!userCameraWork.trim() && videoData.suggestedCameraWork) {
-      setUserCameraWork(videoData.suggestedCameraWork);
-    }
-
-    setExtractNotice(
-      '已成功提取原视频文案与画面描述！你可以在下方左侧文本框内自由增删修改，确认无误后点击「结合本公司业务开始二创」。'
-    );
-    setTimeout(() => setExtractNotice(null), 6000);
-  };
-
-  // ==========================================================================
-  // 模式二（全自动模式）：一键提取并直接结合本公司业务生成二创脚本
-  // ==========================================================================
-  const handleExtractAndAutoGenerate = async () => {
-    setParseError(null);
-    setGenerateError(null);
-    setExtractNotice(null);
-    setIsParsingVideo(true);
-
-    const parseRes = await parseVideoLinkClient(linkInput, settings);
-    setIsParsingVideo(false);
-
-    if (!parseRes.success || !parseRes.data) {
-      setParseError(
-        parseRes.errorMessage || '解析视频链接失败，请检查链接有效性或 API 额度。'
-      );
-      return;
-    }
-
-    const videoData = parseRes.data;
-    setParsedVideo(videoData);
-
-    const effectiveDuration =
-      targetDurationSec > 0 ? targetDurationSec : videoData.durationSec || 18;
-    const effectiveCamera =
-      userCameraWork.trim() ||
-      videoData.suggestedCameraWork ||
-      '近景俯拍、特写推进、中景平视跟随';
-
-    setTargetDurationSec(effectiveDuration);
-    setUserCameraWork(effectiveCamera);
-    clearRefinementHistory();
-
-    await triggerScriptGeneration({
-      videoInfo: videoData,
-      transcriptToUse: videoData.transcript,
-      visualSummaryToUse: videoData.visualSummary,
-      durationSec: effectiveDuration,
-      cameraWork: effectiveCamera,
-    });
+    const sourceState = useAppStore.getState();
+    if (sourceState.isParsingVideo || sourceState.isGeneratingScript) return;
+    const revision = sourceState.workbenchRevision;
+    setParseError(null); setGenerateError(null); setExtractNotice(null); setIsParsingVideo(true);
+    try {
+      const parseRes = await parseVideoLinkClient(sourceState.linkInput, sourceState.settings);
+      if (useAppStore.getState().workbenchRevision !== revision) return;
+      if (parseRes.data) {
+        const videoData = parseRes.data;
+        setParsedVideo(videoData);
+        if (videoData.durationSec > 0) setTargetDurationSec(Math.min(180, Math.max(6, Math.round(videoData.durationSec))));
+        if (!sourceState.userCameraWork.trim() && videoData.suggestedCameraWork) setUserCameraWork(videoData.suggestedCameraWork);
+      }
+      if (!parseRes.success || !parseRes.data) {
+        setParseError(parseRes.errorMessage || '提取失败，请检查链接、厂商权限或余额后手动重试。');
+        return;
+      }
+      setExtractNotice(parseRes.isMockData ? '当前为示例数据，请关闭仿真模式后使用真实接口。'
+        : parseRes.data.transcript.trim()
+          ? '提取已完成，请查看完整性提示并核对口播，再生成二创稿；二创不会重复提取视频。'
+          : '正文／图文已提取，未返回口播；可将正文与 OCR 填入编辑区，核对修改后再二创。');
+    } catch {
+      if (useAppStore.getState().workbenchRevision === revision) setParseError('提取请求失败，请检查网络和账号状态后手动重试。');
+    } finally { setIsParsingVideo(false); }
   };
 
   // ==========================================================================
@@ -204,7 +157,6 @@ export const WorkbenchView: React.FC = () => {
       return;
     }
 
-    clearRefinementHistory();
     await triggerScriptGeneration({
       videoInfo: baseVideo,
       transcriptToUse: editedTranscript,
@@ -222,81 +174,116 @@ export const WorkbenchView: React.FC = () => {
     cameraWork: string;
     refinementInstruction?: string;
   }) => {
-    setIsGeneratingScript(true);
-    setGenerateError(null);
+    const sourceState = useAppStore.getState();
+    if (sourceState.isGeneratingScript || sourceState.isParsingVideo) return;
 
-    const previousScript = streamingScriptText;
-    setStreamingScriptText('');
-
-    const systemPrompt = buildSystemPrompt();
-    const userPrompt = buildUserPrompt({
-      videoInfo: params.videoInfo,
-      editedTranscript: params.transcriptToUse,
-      editedVisualSummary: params.visualSummaryToUse,
-      targetDurationSec: params.durationSec,
-      userCameraWork: params.cameraWork,
-      companyBusinessProfile: settings.companyBusinessProfile,
-      keywords,
-      knowledgeDocs,
-      refinementInstruction: params.refinementInstruction,
-    });
-
-    // Phase 3: 构建多轮对话上下文消息链
+    const { workbenchRevision } = sourceState;
+    const isCurrentWorkbench = () => useAppStore.getState().workbenchRevision === workbenchRevision;
+    const recordId = params.refinementInstruction && sourceState.currentEditingHistoryId
+      ? sourceState.currentEditingHistoryId
+      : `sqlite_${Date.now()}`;
+    const previousVersions = params.refinementInstruction ? sourceState.refinementHistory : [];
+    const previousScript = sourceState.streamingScriptText;
     const historyTurns = params.refinementInstruction
       ? [
-          ...conversationMessages,
-          ...(conversationMessages.length === 0 && previousScript
+          ...sourceState.conversationMessages,
+          ...(sourceState.conversationMessages.length === 0 && previousScript
             ? [{ role: 'assistant' as const, content: previousScript }]
             : []),
         ]
       : [];
 
-    const brandWords = keywords
-      .filter((k) => k.category === 'brand')
-      .map((k) => k.text);
+    setIsGeneratingScript(true);
+    setGenerateError(null);
+    sourceState.syncParsedScriptFromText('');
+    if (!params.refinementInstruction) sourceState.clearRefinementHistory();
 
-    let finalFullText = '';
-    const genRes = await streamGenerateScriptClient({
-      settings,
-      systemPrompt,
-      userPrompt,
-      conversationHistory: historyTurns,
-      targetDurationSec: params.durationSec,
-      userCameraWork: params.cameraWork,
-      companyBusinessProfile: settings.companyBusinessProfile,
-      brandKeywords: brandWords,
-      refinementInstruction: params.refinementInstruction,
-      onChunk: (chunk) => {
-        finalFullText += chunk;
-        appendStreamingChunk(chunk);
-      },
-    });
+    let isSavingHistory = false;
+    try {
+      const systemPrompt = buildSystemPrompt();
+      const userPrompt = buildUserPrompt({
+        videoInfo: params.videoInfo,
+        editedTranscript: params.transcriptToUse,
+        editedVisualSummary: params.visualSummaryToUse,
+        targetDurationSec: params.durationSec,
+        userCameraWork: params.cameraWork,
+        companyBusinessProfile: sourceState.settings.companyBusinessProfile,
+        keywords: sourceState.keywords,
+        knowledgeDocs: sourceState.knowledgeDocs,
+        refinementInstruction: params.refinementInstruction,
+      });
+      const brandWords = sourceState.keywords.filter((k) => k.category === 'brand').map((k) => k.text);
+      let finalFullText = '';
+      const genRes = await streamGenerateScriptClient({
+        settings: sourceState.settings,
+        systemPrompt,
+        userPrompt,
+        conversationHistory: historyTurns,
+        targetDurationSec: params.durationSec,
+        userCameraWork: params.cameraWork,
+        companyBusinessProfile: sourceState.settings.companyBusinessProfile,
+        brandKeywords: brandWords,
+        refinementInstruction: params.refinementInstruction,
+        onChunk: (chunk) => {
+          finalFullText += chunk;
+          if (isCurrentWorkbench()) appendStreamingChunk(chunk);
+        },
+      });
+      if (!genRes.success) {
+        throw new Error(genRes.error || '生成二创脚本失败，请检查大模型 API 配置。');
+      }
 
-    setIsGeneratingScript(false);
-
-    if (!genRes.success) {
-      setGenerateError(genRes.error || '生成二创脚本失败，请检查大模型 API 配置。');
-      return;
+      const completedScript = genRes.fullText || finalFullText;
+      if (!completedScript.trim()) throw new Error('模型未返回有效脚本，请重试。');
+      const nextConversation = [
+        ...historyTurns,
+        { role: 'user' as const, content: userPrompt },
+        { role: 'assistant' as const, content: completedScript },
+      ];
+      const versionLabel = params.refinementInstruction
+        || (params.transcriptToUse !== params.videoInfo.transcript || params.visualSummaryToUse !== params.videoInfo.visualSummary
+          ? '基于人工修订文案 + 本公司业务知识库生成'
+          : '初始结合本公司业务与知识库生成版本');
+      const nextVersions = [...previousVersions, {
+        id: `ver_${Date.now()}`,
+        round: previousVersions.length + 1,
+        instruction: versionLabel,
+        timestamp: new Date().toISOString(),
+        scriptSnapshot: completedScript,
+        conversationMessages: nextConversation,
+      }];
+      const record: HistoryRecord = {
+        id: recordId,
+        platform: params.videoInfo.platform,
+        sourceUrl: params.videoInfo.extractedUrl,
+        title: params.videoInfo.title || '短视频二创脚本',
+        createdAt: new Date().toISOString(),
+        durationSec: params.durationSec,
+        userCameraWork: params.cameraWork,
+        originalTranscript: params.transcriptToUse,
+        sourceContent: { ...params.videoInfo },
+        visualSummary: params.visualSummaryToUse,
+        rawGeneratedScript: completedScript,
+        parsedStructure: parseGeneratedScript(completedScript),
+        refinementHistory: nextVersions,
+        conversationMessages: nextConversation,
+      };
+      if (isCurrentWorkbench()) {
+        useAppStore.setState({
+          streamingScriptText: completedScript,
+          parsedScript: record.parsedStructure,
+          conversationMessages: nextConversation,
+          refinementHistory: nextVersions,
+        });
+      }
+      isSavingHistory = true;
+      await saveGeneratedHistory(record, workbenchRevision);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '生成二创脚本失败';
+      setGenerateError(isSavingHistory ? `脚本已生成，但保存历史失败：${message}` : message);
+    } finally {
+      setIsGeneratingScript(false);
     }
-
-    const completedScript = genRes.fullText || finalFullText;
-
-    // 更新多轮对话上下文与版本快照
-    const nextConversation: typeof conversationMessages = [
-      ...historyTurns,
-      { role: 'user', content: userPrompt },
-      { role: 'assistant', content: completedScript },
-    ];
-    setConversationMessages(nextConversation);
-
-    const versionLabel = params.refinementInstruction
-      ? params.refinementInstruction
-      : isManuallyEdited
-      ? '基于人工修订文案 + 本公司业务知识库生成'
-      : '初始结合本公司业务与知识库生成版本';
-
-    addRefinementVersion(versionLabel, completedScript);
-    await saveCurrentToHistory(Boolean(params.refinementInstruction));
   };
 
   const handleRefineSubmit = async (instruction: string) => {
@@ -334,13 +321,13 @@ export const WorkbenchView: React.FC = () => {
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
-      {/* 顶部链接输入与双模式操作栏（仅提取文案 vs 一键提取并二创） */}
+      {/* 先提取、人工检查，再单独生成二创 */}
       <header className="bg-white border-b border-slate-200 px-6 py-4 space-y-3 shrink-0">
         <div className="flex items-center gap-2.5">
           <div className="relative flex-1">
             <Link2 className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
-              type="text"
+              type="text" name="sourceVideoUrl"
               value={linkInput}
               onChange={(e) => setLinkInput(e.target.value)}
               placeholder="在此粘贴抖音或小红书当下热点视频分享链接（支持直接粘贴带口令的整段文本）..."
@@ -356,36 +343,15 @@ export const WorkbenchView: React.FC = () => {
             </button>
           </div>
 
-          {/* 按钮 1：手动分步模式 - 仅提取文案 */}
           <button
-            type="button"
+            type="button" data-testid="extract-video"
             onClick={handleExtractOnly}
-            disabled={isParsingVideo || isGeneratingScript}
-            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold bg-white text-indigo-700 border border-indigo-200 hover:bg-indigo-50 disabled:opacity-60 transition-all shrink-0"
-            title="仅解析提取原视频口播文案与画面描述，方便你在左侧手动修改后再生成二创脚本"
+            disabled={isParsingVideo || isGeneratingScript || !linkInput.trim()}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 shadow-sm transition-all shrink-0"
+            title="提取发布文案和口播；再次点击会重新调用厂商接口"
           >
-            <Download className="w-4 h-4" />
-            仅提取文案 (手动模式)
-          </button>
-
-          {/* 按钮 2：全自动模式 - 一键提取并二创 */}
-          <button
-            type="button"
-            onClick={handleExtractAndAutoGenerate}
-            disabled={isParsingVideo || isGeneratingScript}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 shadow-sm shadow-indigo-200 transition-all shrink-0"
-          >
-            {isParsingVideo || isGeneratingScript ? (
-              <>
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                {isParsingVideo ? '正在提取原视频...' : 'AI 结合业务二创中...'}
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4" />
-                一键提取并二创
-              </>
-            )}
+            {isParsingVideo ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            {isParsingVideo ? '正在提取文案与口播...' : '提取文案与口播'}
           </button>
         </div>
 
@@ -547,11 +513,20 @@ export const WorkbenchView: React.FC = () => {
                   </div>
                   <div className="flex items-center justify-between text-[11px] text-slate-500">
                     <span>原作者：{parsedVideo.author}</span>
-                    <span>原片时长：{parsedVideo.durationSec} 秒</span>
+                    <span>原片时长：{parsedVideo.durationSec > 0 ? parsedVideo.durationSec + ' 秒' : '未知'}</span>
                   </div>
                 </div>
               )}
 
+              {parsedVideo && <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
+                <h3 className="text-xs font-semibold text-slate-700">发布文案（原始标题／描述）</h3>
+                <p data-testid="published-text" className="max-h-28 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-slate-600">{parsedVideo.publishedText || '接口未返回发布文案'}</p>
+                {parsedVideo.transcriptionStatus && <p role="status" className="text-[11px] text-slate-500">{parsedVideo.transcriptionStatus === 'succeeded' ? '口播转写成功，请核对品牌、数字和漏句。' : parsedVideo.transcriptionMessage || '口播待人工核对补全。'}</p>}
+                <details className="text-xs text-slate-600"><summary className="cursor-pointer">查看原始口播（未修改）</summary>
+                  <p data-testid="original-transcript" className="mt-2 max-h-36 overflow-y-auto whitespace-pre-wrap">{parsedVideo.transcript || '未取得口播文字'}</p>
+                </details>
+              </div>}
+              {parsedVideo && <ExtractedContentDetails content={parsedVideo} onUseText={setEditedTranscript} />}
               {/* 可编辑口播文案框 */}
               <div className="flex-1 flex flex-col">
                 <div className="flex items-center justify-between mb-1.5">
@@ -587,6 +562,7 @@ export const WorkbenchView: React.FC = () => {
                   </div>
                 </div>
                 <textarea
+                  data-testid="editable-transcript"
                   value={editedTranscript}
                   onChange={(e) => setEditedTranscript(e.target.value)}
                   placeholder="提取的原视频口播文案将显示在此处，你可以手动增删修改后再点击下方按钮开始二创..."
@@ -612,12 +588,13 @@ export const WorkbenchView: React.FC = () => {
               <div className="pt-1">
                 <button
                   type="button"
+                  data-testid="generate-script"
                   onClick={handleManualStartGenerate}
-                  disabled={isGeneratingScript || !editedTranscript.trim()}
+                  disabled={isParsingVideo || isGeneratingScript || !editedTranscript.trim()}
                   className="w-full py-2.5 px-4 rounded-xl text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 shadow-sm flex items-center justify-center gap-2 transition-all"
                 >
                   <Sparkles className="w-4 h-4" />
-                  {isManuallyEdited
+                  {isGeneratingScript ? 'AI 结合业务二创中...' : isManuallyEdited
                     ? '基于人工修改后的文案 · 结合本公司业务开始二创'
                     : '结合本公司业务与知识库 · 开始生成二创脚本'}
                 </button>

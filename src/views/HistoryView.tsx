@@ -1,3 +1,4 @@
+import { ExtractedContentDetails } from '../components/ExtractedContentDetails';
 import React, { useState } from 'react';
 import * as Tabs from '@radix-ui/react-tabs';
 import {
@@ -502,12 +503,23 @@ export const HistoryView: React.FC = () => {
 
                     <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
                       <h4 className="text-xs font-bold text-slate-800">
-                        原视频提取口播文案
+                        本次二创输入（含人工修改）
                       </h4>
                       <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-wrap">
                         {selectedRecord.originalTranscript}
                       </p>
                     </div>
+                    {selectedRecord.sourceContent && <>
+                      <ExtractedContentDetails content={selectedRecord.sourceContent} />
+                      <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                        <h4 className="text-xs font-bold text-slate-800">原始提取口播（未修改）</h4>
+                        <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-wrap">{selectedRecord.sourceContent.transcript || '未获得有效口播'}</p>
+                      </div>
+                      <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                        <h4 className="text-xs font-bold text-slate-800">原始发布文案</h4>
+                        <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-wrap">{selectedRecord.sourceContent.publishedText || '未返回发布文案'}</p>
+                      </div>
+                    </>}
                   </div>
                 </Tabs.Content>
 

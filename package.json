@@ -1,6 +1,6 @@
 {
   "name": "video-remix-ai-assistant",
-  "version": "1.0.0",
+  "version": "1.0.6",
   "description": "面向企业新媒体团队的视频脚本二创桌面助手",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -8,13 +8,16 @@
     "dev:electron": "concurrently -k \"vite\" \"wait-on tcp:5173 && tsc -p tsconfig.node.json && cross-env NODE_ENV=development electron .\"",
     "build": "tsc && tsc -p tsconfig.node.json && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.server.json --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",
     "smoke:desktop": "electron scripts/desktopSmoke.cjs",
     "smoke:packaged": "electron scripts/desktopSmoke.cjs release/win-unpacked/resources/app.asar",
-    "pack:win": "npm run build && electron-builder --win --x64 --dir --publish never",
-    "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never",
-    "postinstall": "install-electron --no"
+    "pack:win": "npm run build && node scripts/prepareUniversalConfig.cjs && electron-builder --config electron-builder.universal.cjs --win --x64 --dir --publish never",
+    "dist:win": "npm run build && node scripts/prepareUniversalConfig.cjs && electron-builder --config electron-builder.universal.cjs --win nsis --x64 --publish never",
+    "postinstall": "install-electron --no",
+    "build:auth": "tsc -p tsconfig.server.json",
+    "start:auth": "node dist-server/server/main.js",
+    "smoke:persistence": "node scripts/desktopPersistenceSmoke.cjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.1",
@@ -92,5 +95,6 @@
   },
   "engines": {
     "node": ">=22.12.0"
-  }
+  },
+  "authMode": "local"
 }

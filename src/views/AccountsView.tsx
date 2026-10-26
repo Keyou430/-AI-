@@ -4,6 +4,7 @@ import { useAuthStore } from '../store/useAuthStore';
 
 export const AccountsView: React.FC = () => {
   const currentUser = useAuthStore((state) => state.user);
+  const mode = useAuthStore((state) => state.mode);
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,7 +57,7 @@ export const AccountsView: React.FC = () => {
 
   return <div className="flex-1 overflow-auto p-8 space-y-6">
     <div><h1 className="text-2xl font-bold text-slate-900">账号管理</h1>
-      <p className="mt-2 text-sm text-slate-500">管理本机账号。停用账号后，其后续操作将被拦截。</p></div>
+      <p className="mt-2 text-sm text-slate-500">{mode === 'remote' ? '统一管理员工账号。停用后撤销全部会话，员工端定时校验并锁定。' : '管理本机账号。停用账号后，其后续操作将被拦截。'}</p></div>
     {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
     {notice && <p role="status" className="text-sm text-green-700">{notice}</p>}
     <form onSubmit={create} className="rounded-xl border bg-white p-5 space-y-4">

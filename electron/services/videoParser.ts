@@ -1,3 +1,7 @@
+import { setTimeout as delay } from 'node:timers/promises';
+import { readLinkDigest, type LinkDigestDetails } from './linkDigestProvider';
+import { getYaoanVideoPreset, parseYaoanVideoResponse } from './yaoanVideoProvider';
+import { normalizeVideoParserOptions, type VideoParserOptions, type VideoParserProvider } from './videoParserConfig';
 /**
  * [Phase 1] 第三方短视频解析服务
  * - 通过设置页或环境变量配置第三方解析 API
@@ -11,6 +15,9 @@ export interface VideoParseRequest {
   rawInput: string;
   apiKey?: string;
   apiEndpoint?: string;
+  apiOptions?: VideoParserOptions;
+  apiProvider?: VideoParserProvider;
+  linkDigestMaxCredits?: number;
   enableMockFallback?: boolean;
 }
 
@@ -21,6 +28,10 @@ export interface ParsedVideoData {
   author: string;
   durationSec: number;
   transcript: string;
+  publishedText?: string;
+  transcriptionStatus?: 'succeeded' | 'failed' | 'empty' | 'not_video' | 'partial';
+  extractionDetails?: LinkDigestDetails;
+  transcriptionMessage?: string;
   visualSummary: string;
   suggestedCameraWork: string;
 }
@@ -28,7 +39,7 @@ export interface ParsedVideoData {
 export interface VideoParseResponse {
   success: boolean;
   data?: ParsedVideoData;
-  errorCode?: 'INVALID_URL' | 'UNSUPPORTED_PLATFORM' | 'QUOTA_EXHAUSTED' | 'API_ERROR';
+  errorCode?: 'INVALID_URL' | 'UNSUPPORTED_PLATFORM' | 'QUOTA_EXHAUSTED' | 'API_ERROR' | 'TRANSCRIPTION_FAILED';
   errorMessage?: string;
   isMockData?: boolean;
 }
@@ -63,7 +74,7 @@ export function extractUrlAndPlatform(rawInput: string): {
   if (['douyin.com', 'iesdouyin.com'].some(matchesDomain)) {
     return { url: candidateUrl, platform: 'douyin' };
   }
-  if (['xiaohongshu.com', 'xhslink.com'].some(matchesDomain)) {
+  if (['xiaohongshu.com', 'xhslink.com', 'xhslink.cn'].some(matchesDomain)) {
     return { url: candidateUrl, platform: 'xiaohongshu' };
   }
 
@@ -98,8 +109,11 @@ const MOCK_VIDEO_SAMPLES: Record<VideoPlatform, ParsedVideoData> = {
 };
 
 export async function parseShortVideoLink(
-  req: VideoParseRequest
+  req: VideoParseRequest,
+  onError?: (error: unknown) => void,
+  signal?: AbortSignal
 ): Promise<VideoParseResponse> {
+  signal?.throwIfAborted();
   const { url, platform } = extractUrlAndPlatform(req.rawInput);
 
   if (!url) {
@@ -114,7 +128,7 @@ export async function parseShortVideoLink(
     return {
       success: false,
       errorCode: 'UNSUPPORTED_PLATFORM',
-      errorMessage: '当前仅支持抖音（douyin.com）与小红书（xiaohongshu.com / xhslink.com）视频链接。',
+      errorMessage: '当前仅支持抖音（douyin.com）与小红书（xiaohongshu.com / xhslink.com / xhslink.cn）视频链接。',
     };
   }
 
@@ -126,29 +140,38 @@ export async function parseShortVideoLink(
     };
   }
 
-  const endpoint = req.apiEndpoint?.trim() || DEFAULT_HARDCODED_VIDEO_API.endpoint;
+  const preset = req.apiProvider === 'yaoan' ? getYaoanVideoPreset(platform) : undefined;
+  const endpoint = preset?.endpoint || req.apiEndpoint?.trim() || DEFAULT_HARDCODED_VIDEO_API.endpoint;
   const apiKey = req.apiKey?.trim() || DEFAULT_HARDCODED_VIDEO_API.apiKey;
+
+  if (!req.enableMockFallback && req.apiProvider === 'linkdigest') {
+    return readLinkDigest({ url, platform, apiKey: req.apiKey?.trim() || '', maxCredits: req.linkDigestMaxCredits }, onError, signal);
+  }
 
   // 真实模式下调用用户配置的接口。
   if (!req.enableMockFallback) {
-    if (!endpoint || !apiKey) {
-      return { success: false, errorCode: 'API_ERROR', errorMessage: '请先配置有效的视频解析接口地址和 API Key。' };
-    }
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10000);
-
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({ url }),
-        signal: controller.signal,
-      }).finally(() => clearTimeout(timeout));
+      const options = normalizeVideoParserOptions(preset?.options || req.apiOptions);
+      if (!endpoint || (options.authMode !== 'none' && !apiKey)) {
+        return { success: false, errorCode: 'API_ERROR', errorMessage: '请先在系统设置中保存内容提取接口地址及所需 API Key。' };
+      }
+      const requestSignal = AbortSignal.any([AbortSignal.timeout(options.timeoutSeconds * 1000), ...(signal ? [signal] : [])]);
+      const requestUrl = new URL(endpoint);
+      if (preset) requestUrl.searchParams.set('use_own_key', 'false');
+      const headers: Record<string, string> = {};
+      if (options.authMode === 'bearer') headers.Authorization = `Bearer ${apiKey}`;
+      if (options.authMode === 'header') headers[options.apiKeyName] = apiKey;
+      if (options.authMode === 'query') requestUrl.searchParams.set(options.apiKeyName, apiKey);
+      if (options.method === 'GET') requestUrl.searchParams.set(options.urlField, url);
+      else headers['Content-Type'] = 'application/json';
+      const response = await fetch(requestUrl, {
+        method: options.method, headers,
+        ...(options.method === 'POST' ? { body: JSON.stringify({ [options.urlField]: url }) } : {}),
+        signal: requestSignal,
+      });
 
       if (response.status === 402 || response.status === 429) {
+        onError?.({ name: 'APIError', status: response.status });
         return {
           success: false,
           errorCode: 'QUOTA_EXHAUSTED',
@@ -157,28 +180,37 @@ export async function parseShortVideoLink(
       }
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const message = response.status === 401 ? 'API Key 无效或已过期，请在设置页更新'
+          : response.status === 403 ? '厂商余额不足或未开通接口权限，请检查厂商账户' : `内容提取服务返回 HTTP ${response.status}`;
+        throw Object.assign(new Error(message), { status: response.status });
       }
 
       const json: any = await response.json();
-      if (json.success === false || json.code === 401 || json.code === 403) {
-        throw new Error(json.message || '解析接口返回失败状态');
+      if (preset) return parseYaoanVideoResponse(json, platform, url);
+      if (!json || typeof json !== 'object' || json.success === false || ['401', '403'].includes(String(json.code))) {
+        throw new Error('内容提取接口返回失败状态，请检查密钥、额度和请求参数');
       }
       const rawData = json.data || json;
-      const transcript = rawData.transcript || rawData.asr_text;
+      const readField = (fieldPath: string): unknown => fieldPath.split('.').reduce<unknown>((value, key) =>
+        value && typeof value === 'object' && Object.prototype.hasOwnProperty.call(value, key)
+          ? (value as Record<string, unknown>)[key] : undefined, json);
+      const transcript = options.textPath ? readField(options.textPath) : rawData.transcript || rawData.asr_text;
       if (typeof transcript !== 'string' || !transcript.trim()) {
-        throw new Error('解析接口未返回口播文本（transcript 或 asr_text），请检查接口协议');
+        throw new Error('内容提取接口未返回非空文本，请在系统设置中检查返回文本字段路径');
       }
 
+      const title = options.titlePath ? readField(options.titlePath) : rawData.title || rawData.desc;
       return {
         success: true,
         data: {
           platform,
           extractedUrl: url,
-          title: rawData.title || rawData.desc || '短视频提取内容',
+          title: typeof title === 'string' && title.trim() ? title : '短视频提取内容',
           author: rawData.author?.nickname || rawData.author || '原作者',
           durationSec: Number(rawData.duration || rawData.durationSec || 18),
           transcript,
+          publishedText: typeof rawData.desc === 'string' ? rawData.desc : '',
+          transcriptionStatus: 'succeeded',
           visualSummary:
             rawData.visual_summary ||
             rawData.cover_desc ||
@@ -188,18 +220,20 @@ export async function parseShortVideoLink(
         },
       };
     } catch (err: any) {
+      signal?.throwIfAborted();
+      onError?.(err);
       if (!req.enableMockFallback) {
         return {
           success: false,
           errorCode: 'API_ERROR',
-          errorMessage: `调用第三方解析接口失败（${err?.message || '网络异常'}）。请检查解析接口密钥或在设置页开启「内置仿真回退」。`,
+          errorMessage: `调用第三方解析接口失败（${err?.message || '网络异常'}）。请检查系统设置中的接口地址、鉴权方式和字段路径。`,
         };
       }
     }
   }
 
   // 仿真模式使用固定示例数据。
-  await new Promise((resolve) => setTimeout(resolve, 500));
+  await delay(500, undefined, { signal });
   const sample = MOCK_VIDEO_SAMPLES[platform];
   return {
     success: true,

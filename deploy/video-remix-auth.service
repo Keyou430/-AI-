@@ -1,0 +1,24 @@
+[Unit]
+Description=Video Remix Account Authorization
+After=network.target
+
+[Service]
+Type=simple
+User=remixauth
+Group=remixauth
+WorkingDirectory=/opt/video-remix-auth
+Environment=AUTH_PORT=3080
+Environment=AUTH_DATA_DIR=/var/lib/video-remix-auth
+Environment=AUTH_ADMIN_PASSWORD_FILE=/etc/video-remix-auth/admin-password
+ExecStart=/usr/bin/node /opt/video-remix-auth/dist-server/server/main.js
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/video-remix-auth
+
+[Install]
+WantedBy=multi-user.target

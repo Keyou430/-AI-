@@ -4,7 +4,7 @@ import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { parseShortVideoLink, extractUrlAndPlatform } from '../electron/services/videoParser';
-import { streamGenerateScript } from '../electron/services/llmService';
+import { streamGenerateScript, testLLMConnection } from '../electron/services/llmService';
 import { parseKnowledgeBuffer } from '../electron/services/knowledgeParser';
 import { buildUserPrompt } from '../src/lib/promptBuilder';
 
@@ -108,5 +108,87 @@ test('真实 PDF 和 DOCX 文件可提取正文', async () => {
     const parsed = await parseKnowledgeBuffer({name,sizeBytes:buffer.length,buffer});
     assert.ok(parsed.fullContent.includes(expected));
     assert.equal(parsed.sizeBytes,buffer.length);
+  }
+});
+
+
+test('视频和模型连接失败时向日志回调传递 HTTP 状态', async () => {
+  await withServer((_req, res) => {
+    res.writeHead(429, {'Content-Type':'application/json'});
+    res.end(JSON.stringify({message:'private-upstream-response'}));
+  }, async (baseURL) => {
+    const failures: any[] = [];
+    const result = await parseShortVideoLink({rawInput:'https://v.douyin.com/demo/',apiEndpoint:baseURL,apiKey:'private-api-key',enableMockFallback:false}, error => failures.push(error));
+    assert.equal(result.success, false);
+    assert.equal(failures[0].status, 429);
+  });
+  await withServer((_req, res) => {
+    res.writeHead(401, {'Content-Type':'application/json'});
+    res.end(JSON.stringify({error:{message:'private-upstream-response'}}));
+  }, async (baseURL) => {
+    const failures: any[] = [];
+    const result = await testLLMConnection({apiKey:'private-api-key',baseURL,model:'test-model'}, error => failures.push(error));
+    assert.equal(result.success, false);
+    assert.equal(failures[0].status, 401);
+  });
+});
+
+
+test('通用解析配置支持 GET 查询鉴权、链接参数和响应字段映射', async () => {
+  let received: { method?: string; url?: string; authorization?: string } = {};
+  await withServer((req, res) => {
+    received = { method: req.method, url: req.url, authorization: req.headers.authorization };
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ success: true, data: { audio_text: '聚合接口口播', desc: '聚合接口标题' } }));
+  }, async (baseURL) => {
+    const result = await parseShortVideoLink({ rawInput: 'https://v.douyin.com/demo/', apiEndpoint: baseURL,
+      apiKey: 'query-test-key', enableMockFallback: false, apiOptions: { method: 'GET', authMode: 'query',
+        apiKeyName: 'api_key', urlField: 'share_url', textPath: 'data.audio_text', titlePath: 'data.desc', timeoutSeconds: 120 } });
+    assert.equal(result.success, true);
+    assert.equal(result.data?.transcript, '聚合接口口播');
+    assert.equal(result.data?.title, '聚合接口标题');
+    assert.equal(received.method, 'GET');
+    assert.equal(received.authorization, undefined);
+    const address = new URL(received.url!, baseURL);
+    assert.equal(address.searchParams.get('share_url'), 'https://v.douyin.com/demo/');
+    assert.equal(address.searchParams.get('api_key'), 'query-test-key');
+  });
+});
+
+
+test('通用解析支持自定义请求头及无密钥接口，并按配置发送 POST 参数', async () => {
+  for (const authMode of ['header', 'none'] as const) {
+    let received: { body?: unknown; apiKey?: string; authorization?: string } = {};
+    await withServer(async (req, res) => {
+      let body = ''; for await (const chunk of req) body += chunk;
+      received = { body: JSON.parse(body), apiKey: req.headers['x-api-key'] as string | undefined, authorization: req.headers.authorization };
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ items: [{ content: '接口正文' }] }));
+    }, async (baseURL) => {
+      const result = await parseShortVideoLink({ rawInput: 'https://xhslink.com/demo/', apiEndpoint: baseURL,
+        apiKey: authMode === 'none' ? '' : 'header-test-key', enableMockFallback: false,
+        apiOptions: { method: 'POST', authMode, apiKeyName: 'X-API-Key', urlField: 'share_text',
+          textPath: 'items.0.content', titlePath: '', timeoutSeconds: 10 } });
+      assert.equal(result.success, true); assert.equal(result.data?.transcript, '接口正文');
+      assert.deepEqual(received.body, { share_text: 'https://xhslink.com/demo/' });
+      assert.equal(received.authorization, undefined);
+      assert.equal(received.apiKey, authMode === 'none' ? undefined : 'header-test-key');
+    });
+  }
+});
+
+test('字段映射错误、仅返回媒体或业务失败时明确失败，不回退到示例或回显密钥', async () => {
+  for (const payload of [
+    { data: { video_url: 'https://media.example/video.mp4' } },
+    { data: { audio_text: { unexpected: '不是文本' } } },
+    { success: false, message: 'private-secret', data: { audio_text: '不能当作成功' } },
+  ]) {
+    await withServer((_req, res) => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(payload)); }, async baseURL => {
+      const result = await parseShortVideoLink({ rawInput: 'https://v.douyin.com/demo/', apiEndpoint: baseURL,
+        apiKey: 'private-secret', enableMockFallback: false, apiOptions: { method: 'GET', authMode: 'query',
+          apiKeyName: 'api_key', urlField: 'url', textPath: 'data.audio_text', titlePath: '', timeoutSeconds: 10 } });
+      assert.equal(result.success, false); assert.equal(result.isMockData, undefined);
+      assert.equal(result.errorMessage?.includes('private-secret'), false);
+    });
   }
 });

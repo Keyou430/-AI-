@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useAppStore } from './useAppStore';
 import type { AuthUser } from '../types';
 import '../services/ipcClient';
 
@@ -6,6 +7,7 @@ interface AuthState {
   user: AuthUser | null;
   initialized: boolean;
   needsSetup: boolean;
+  mode: 'local' | 'remote';
   error: string | null;
   initialize: () => Promise<void>;
   signIn: (username: string, password: string, displayName?: string) => Promise<boolean>;
@@ -17,6 +19,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   initialized: false,
   needsSetup: false,
+  mode: 'local',
   error: null,
   initialize: async () => {
     if (!window.electronAPI) {
@@ -25,7 +28,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
     try {
       const result = await window.electronAPI.getAuthStatus();
-      set({ user: result.user, needsSetup: result.needsSetup, initialized: true });
+      set({ user: result.user, needsSetup: result.needsSetup, mode: result.mode || 'local', initialized: true });
     } catch {
       set({ initialized: true, error: '读取登录状态失败，请重新打开应用。' });
     }
@@ -46,7 +49,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
   signOut: async () => {
     try { await window.electronAPI?.logout(); }
-    finally { set({ user: null, error: null }); }
+    finally { useAppStore.getState().updateSettings({ llmApiKey: '', videoParserApiKey: '' }); set({ user: null, error: null }); }
   },
-  invalidate: (message) => set({ user: null, error: message }),
+  invalidate: (message) => { useAppStore.getState().updateSettings({ llmApiKey: '', videoParserApiKey: '' }); set({ user: null, error: message }); },
 }));

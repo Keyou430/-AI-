@@ -16,7 +16,12 @@ export interface StreamErrorEvent {
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  getProviderSettings: () => ipcRenderer.invoke('providers:get'),
+  saveProviderSettings: (input: unknown) => ipcRenderer.invoke('providers:save', input),
   getAuthStatus: () => ipcRenderer.invoke('auth:status'),
+  openLogFolder: () => ipcRenderer.invoke('runtime:open-log-folder'),
+  reportRuntimeError: (payload: { kind: 'error' | 'unhandled-rejection'; name?: string; stack?: string }) =>
+    ipcRenderer.invoke('runtime:report-error', payload),
   setupAdmin: (input: { password: string; displayName: string }) => ipcRenderer.invoke('auth:setup', input),
   login: (input: { username: string; password: string }) => ipcRenderer.invoke('auth:login', input),
   logout: () => ipcRenderer.invoke('auth:logout'),

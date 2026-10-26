@@ -1,0 +1,20 @@
+# 合并到现有 Caddyfile；保留原有站点与全局选项。
+{
+    default_sni 114.132.186.95
+}
+
+https://114.132.186.95 {
+    tls {
+        issuer acme {
+            dir https://acme-v02.api.letsencrypt.org/directory
+            profile shortlived
+        }
+    }
+    request_body {
+        max_size 1MB
+    }
+    reverse_proxy 127.0.0.1:3080 {
+        header_up X-Real-IP {remote_host}
+        flush_interval -1
+    }
+}

@@ -1,4 +1,6 @@
+import { cn } from '../lib/utils';
 import React, { useState } from 'react';
+import { ProviderSettingsForm } from '../components/ProviderSettingsForm';
 import {
   KeyRound,
   BookOpen,
@@ -6,9 +8,6 @@ import {
   Upload,
   Trash2,
   Plus,
-  CheckCircle2,
-  AlertCircle,
-  RefreshCw,
   Briefcase,
   FolderSearch,
   Eye,
@@ -17,11 +16,9 @@ import {
 import { useAppStore } from '../store/useAppStore';
 import {
   selectNativeKnowledgeFilesClient,
-  testLLMConnectionClient,
   uploadAndParseKnowledgeFileClient,
 } from '../services/ipcClient';
 import { KeywordTag, KnowledgeDocument } from '../types';
-import { cn } from '../lib/utils';
 
 export const SettingsView: React.FC = () => {
   const {
@@ -37,23 +34,12 @@ export const SettingsView: React.FC = () => {
   } = useAppStore();
 
   const [newKeyword, setNewKeyword] = useState('');
+  const [logFolderError, setLogFolderError] = useState<string | null>(null);
   const [keywordCategory, setKeywordCategory] =
     useState<KeywordTag['category']>('brand');
-  const [testingConnection, setTestingConnection] = useState(false);
-  const [connectionResult, setConnectionResult] = useState<{
-    success: boolean;
-    message: string;
-  } | null>(null);
   const [parsingFiles, setParsingFiles] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<KnowledgeDocument | null>(null);
 
-  const handleTestConnection = async () => {
-    setTestingConnection(true);
-    setConnectionResult(null);
-    const res = await testLLMConnectionClient(settings);
-    setTestingConnection(false);
-    setConnectionResult(res);
-  };
 
   // Phase 3: 使用 Electron 原生文件选择器直接调用主进程 pdf-parse / mammoth 解析本地文件
   const handleNativeDialogSelect = async () => {
@@ -95,6 +81,28 @@ export const SettingsView: React.FC = () => {
   return (
     <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
       <div className="max-w-4xl mx-auto space-y-6">
+        <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-3">
+          <h2 className="text-sm font-bold text-slate-900">运行日志</h2>
+          <p className="text-xs text-slate-500">记录启动、退出和关键操作结果，用于排查运行问题。</p>
+          <button
+            type="button"
+            disabled={!window.electronAPI}
+            onClick={async () => {
+              setLogFolderError(null);
+              try {
+                const result = await window.electronAPI?.openLogFolder();
+                if (!result?.success) throw new Error(result?.error || '请使用桌面客户端打开运行日志');
+              } catch (error) {
+                setLogFolderError(error instanceof Error ? error.message : '打开运行日志失败');
+              }
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            <FolderSearch className="w-4 h-4" />
+            打开运行日志
+          </button>
+          {logFolderError && <p role="alert" className="text-xs text-red-600">{logFolderError}</p>}
+        </section>
         {/* 1. 本公司主营业务与关键词配置 (PRD V1.1 核心升级) */}
         <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-5">
           <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
@@ -294,7 +302,7 @@ export const SettingsView: React.FC = () => {
           </div>
         </section>
 
-        {/* 3. API 密钥管理（支持中国大陆主流大模型一键预设切换） */}
+        {/* 3. 本设备模型与内容提取接口配置 */}
         <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-5">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div className="flex items-center gap-2.5">
@@ -306,7 +314,7 @@ export const SettingsView: React.FC = () => {
                   API 密钥与模型配置
                 </h2>
                 <p className="text-xs text-slate-500">
-                  采用 OpenAI 标准接口协议，内置 DeepSeek、通义千问、字节豆包、Kimi 等国内直连预设
+                  模型可使用 DeepSeek；内容提取可选择聚合预设，也可按厂商文档自定义接口
                 </p>
               </div>
             </div>
@@ -324,168 +332,8 @@ export const SettingsView: React.FC = () => {
             </label>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                模型服务商预设
-              </label>
-              <select
-                value={settings.llmProvider}
-                onChange={(e) => {
-                  const provider = e.target.value as any;
-                  const presets: Record<
-                    string,
-                    { baseUrl: string; model: string }
-                  > = {
-                    deepseek: {
-                      baseUrl: 'https://api.deepseek.com/v1',
-                      model: 'deepseek-chat',
-                    },
-                    qwen: {
-                      baseUrl:
-                        'https://dashscope.aliyuncs.com/compatible-mode/v1',
-                      model: 'qwen-plus',
-                    },
-                    doubao: {
-                      baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
-                      model: 'doubao-pro-32k',
-                    },
-                    kimi: {
-                      baseUrl: 'https://api.moonshot.cn/v1',
-                      model: 'moonshot-v1-32k',
-                    },
-                    openai: {
-                      baseUrl: 'https://api.openai.com/v1',
-                      model: 'gpt-4o',
-                    },
-                  };
-                  if (presets[provider]) {
-                    updateSettings({
-                      llmProvider: provider,
-                      llmBaseUrl: presets[provider].baseUrl,
-                      llmModel: presets[provider].model,
-                    });
-                  } else {
-                    updateSettings({ llmProvider: 'custom' });
-                  }
-                }}
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs bg-slate-50 focus:bg-white focus:outline-none focus:border-indigo-500"
-              >
-                <option value="deepseek">DeepSeek (国内直连推荐)</option>
-                <option value="qwen">阿里云百炼 (通义千问 qwen-plus)</option>
-                <option value="doubao">火山方舟 (字节豆包)</option>
-                <option value="kimi">月之暗面 (Kimi moonshot-v1-32k)</option>
-                <option value="openai">OpenAI (GPT-4o)</option>
-                <option value="custom">自定义 OpenAI 兼容接口</option>
-              </select>
-            </div>
+          <ProviderSettingsForm />
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                Base URL
-              </label>
-              <input
-                type="text"
-                value={settings.llmBaseUrl}
-                onChange={(e) => updateSettings({ llmBaseUrl: e.target.value })}
-                placeholder="https://api.deepseek.com/v1"
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs bg-slate-50 focus:bg-white focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                模型名称 (Model)
-              </label>
-              <input
-                type="text"
-                value={settings.llmModel}
-                onChange={(e) => updateSettings({ llmModel: e.target.value })}
-                placeholder="deepseek-chat"
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs bg-slate-50 focus:bg-white focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-end gap-3">
-            <div className="flex-1">
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                大模型 API Key
-              </label>
-              <input
-                type="password"
-                value={settings.llmApiKey}
-                onChange={(e) => updateSettings({ llmApiKey: e.target.value })}
-                placeholder="sk-..."
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs bg-slate-50 focus:bg-white focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={handleTestConnection}
-              disabled={testingConnection}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
-            >
-              {testingConnection ? (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  测试中...
-                </>
-              ) : (
-                '测试连接'
-              )}
-            </button>
-          </div>
-
-          {connectionResult && (
-            <div
-              className={cn(
-                'p-3 rounded-xl border text-xs flex items-center gap-2',
-                connectionResult.success
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                  : 'bg-amber-50 border-amber-200 text-amber-800'
-              )}
-            >
-              {connectionResult.success ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              ) : (
-                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-              )}
-              <span>{connectionResult.message}</span>
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-4 pt-3 border-t border-slate-100">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                第三方短视频解析 API 接口地址
-              </label>
-              <input
-                type="text"
-                value={settings.videoParserEndpoint}
-                onChange={(e) =>
-                  updateSettings({ videoParserEndpoint: e.target.value })
-                }
-                placeholder="填写已购买服务的解析接口地址"
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs bg-slate-50 focus:bg-white focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                第三方视频提取 API Key
-              </label>
-              <input
-                type="password"
-                value={settings.videoParserApiKey}
-                onChange={(e) =>
-                  updateSettings({ videoParserApiKey: e.target.value })
-                }
-                placeholder="填写十目API或聚合数据密钥..."
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs bg-slate-50 focus:bg-white focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-          </div>
         </section>
       </div>
 

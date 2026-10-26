@@ -82,6 +82,7 @@ export function buildUserPrompt(input: BuildPromptInput): string {
     `1. 原视频来源平台：${videoInfo.platform === 'douyin' ? '抖音' : '小红书'}`,
     `2. 生效的原视频口播文案（含人工修订）：${editedTranscript || videoInfo.transcript}`,
     `3. 生效的原片画面与镜头概述（含人工修订）：${editedVisualSummary || '未提供画面描述'}`,
+    ...(videoInfo.publishedText ? [`原视频发布文案（仅作背景，以人工修订后的口播为准）：${videoInfo.publishedText}`] : []),
     ``,
     `================ 二、本公司主营业务与关键词约束 ================`,
     `4. 本公司主营业务概述：${companyBusinessProfile || '精品冷萃咖啡液与办公室便携冲调饮品'}`,

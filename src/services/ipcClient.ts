@@ -1,3 +1,4 @@
+import type { ProviderSettings, ProviderSettingsInput } from '../../electron/services/providerTypes';
 /**
  * 前端与 Electron 主进程通信桥接层 (完整覆盖 Phase 1 + Phase 2 + Phase 3)
  * - Phase 1: 短视频链接提取 + 大模型流式二创生成
@@ -20,7 +21,11 @@ import {
 declare global {
   interface Window {
     electronAPI?: {
-      getAuthStatus: () => Promise<{ needsSetup: boolean; user: AuthUser | null }>;
+      getProviderSettings: () => Promise<{ success: boolean; config?: ProviderSettings; error?: string }>;
+      saveProviderSettings: (input: ProviderSettingsInput) => Promise<{ success: boolean; config?: ProviderSettings; error?: string }>;
+      getAuthStatus: () => Promise<{ needsSetup: boolean; user: AuthUser | null; mode?: 'local' | 'remote' }>;
+      openLogFolder: () => Promise<{ success: boolean; error?: string }>;
+      reportRuntimeError: (payload: { kind: 'error' | 'unhandled-rejection'; name?: string; stack?: string }) => Promise<{ success: boolean }>;
       setupAdmin: (input: { password: string; displayName: string }) => Promise<AuthResult>;
       login: (input: { username: string; password: string }) => Promise<AuthResult>;
       logout: () => Promise<AuthResult>;
@@ -46,7 +51,7 @@ declare global {
       }) => Promise<{ success: boolean; records: HistoryRecord[] }>;
       saveHistoryToDB: (
         record: HistoryRecord
-      ) => Promise<{ success: boolean; record: HistoryRecord }>;
+      ) => Promise<{ success: boolean; record?: HistoryRecord; error?: string }>;
       deleteHistoryFromDB: (id: string) => Promise<{ success: boolean }>;
       getDatabaseInfo: () => Promise<{
         success: boolean;
@@ -116,28 +121,7 @@ function getBrowserFallbackKnowledgeDocs(): KnowledgeDocument[] {
   } catch {
     // ignore
   }
-  const seedContent = [
-    '【企业品牌与产品知识库手册 V2.0】',
-    '1. 公司主营业务定位：专注于年轻职场人群的精品冷萃咖啡液、零脂冻干咖啡粉与桌面即饮冲调方案。',
-    '2. 核心产品卖点：采用零下40度FD宇航冻干锁鲜技术，保留现磨阿拉比卡豆95%以上风味香气；零蔗糖、零反式脂肪酸，3秒即溶冰水或椰子水。',
-    '3. 短视频二创结合规范：借势职场早八、居家改造或美食特调类热点视频时，前3秒保留原热点钩子，第1至第2个镜头植入产品视觉爽点，口播强调零脂轻负担与高效提神。',
-  ].join('\n');
-  const initial: KnowledgeDocument[] = [
-    {
-      id: 'kb_seed_1',
-      name: '企业产品卖点与短视频二创融合规范手册.txt',
-      filePath: 'builtin://企业产品卖点与短视频二创融合规范手册.txt',
-      fileType: 'txt',
-      sizeBytes: 620,
-      uploadedAt: new Date().toISOString(),
-      contentSnippet: seedContent.slice(0, 140) + '...',
-      fullContent: seedContent,
-      charCount: seedContent.length,
-      enabled: true,
-    },
-  ];
-  localStorage.setItem(BROWSER_FALLBACK_KB_KEY, JSON.stringify(initial));
-  return initial;
+  return [];
 }
 
 function setBrowserFallbackKnowledgeDocs(docs: KnowledgeDocument[]): void {
@@ -181,7 +165,10 @@ export async function saveHistoryRecordToSQLite(
 ): Promise<HistoryRecord> {
   if (window.electronAPI?.saveHistoryToDB) {
     const res = await window.electronAPI.saveHistoryToDB(record);
-    return res?.record || record;
+    if (!res?.success || !res.record) {
+      throw new Error(res?.error || '保存历史记录失败');
+    }
+    return res.record;
   }
 
   const current = getBrowserFallbackRecords();
@@ -342,7 +329,7 @@ function detectPlatformFromText(rawInput: string): {
   if (/douyin\.com|iesdouyin\.com/i.test(candidate)) {
     return { url: candidate, platform: 'douyin' };
   }
-  if (/xiaohongshu\.com|xhslink\.com/i.test(candidate)) {
+  if (/xiaohongshu\.com|xhslink\.(?:com|cn)/i.test(candidate)) {
     return { url: candidate, platform: 'xiaohongshu' };
   }
   return { url: candidate, platform: null };
@@ -381,7 +368,7 @@ export async function parseVideoLinkClient(
     return {
       success: false,
       errorMessage:
-        '当前仅支持抖音（douyin.com）与小红书（xiaohongshu.com / xhslink.com）视频链接。',
+        '当前仅支持抖音（douyin.com）与小红书（xiaohongshu.com / xhslink.com / xhslink.cn）视频链接。',
     };
   }
   if (url.includes('quota-error')) {

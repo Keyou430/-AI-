@@ -1,0 +1,40 @@
+# 待部署模板：先检查现有站点和端口；申请正式证书后才启用下面的 443 server。
+# 首次申请证书时仅启用 80 server，并用 nginx -t 校验后 reload。
+limit_req_zone $binary_remote_addr zone=remix_auth_ip_login:10m rate=5r/m;
+server {
+    listen 80;
+    server_name 114.132.186.95;
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/remix-auth-acme;
+        default_type text/plain;
+    }
+    location / {
+        return 301 https://114.132.186.95$request_uri;
+    }
+}
+server {
+    listen 443 ssl;
+    server_name 114.132.186.95;
+    ssl_certificate /etc/letsencrypt/live/video-remix-auth-ip/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/video-remix-auth-ip/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    client_max_body_size 1m;
+    location = /v1/login {
+        limit_req zone=remix_auth_ip_login burst=5 nodelay;
+        limit_req_status 429;
+        proxy_pass http://127.0.0.1:3080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_buffering off;
+        proxy_connect_timeout 2s;
+        proxy_read_timeout 180s;
+    }
+    location / {
+        proxy_pass http://127.0.0.1:3080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_buffering off;
+        proxy_connect_timeout 2s;
+        proxy_read_timeout 180s;
+    }
+}

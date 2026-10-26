@@ -1,3 +1,5 @@
+import type { LinkDigestDetails } from '../../electron/services/linkDigestProvider';
+
 export type VideoPlatform = 'douyin' | 'xiaohongshu';
 
 export type ActiveNavTab = 'workbench' | 'history' | 'settings' | 'accounts';
@@ -9,6 +11,10 @@ export interface ParsedVideoInfo {
   author: string;
   durationSec: number;
   transcript: string;
+  publishedText?: string;
+  transcriptionStatus?: 'succeeded' | 'failed' | 'empty' | 'not_video' | 'partial';
+  extractionDetails?: LinkDigestDetails;
+  transcriptionMessage?: string;
   visualSummary: string;
   suggestedCameraWork: string;
 }
@@ -92,6 +98,7 @@ export interface HistoryRecord {
   durationSec: number;
   userCameraWork: string;
   originalTranscript: string;
+  sourceContent?: ParsedVideoInfo;
   visualSummary: string;
   rawGeneratedScript: string;
   parsedStructure: ParsedScriptStructure;

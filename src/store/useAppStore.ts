@@ -48,6 +48,7 @@ interface AppState {
 
   // 工作台状态（支持全自动模式 + 仅提取手动修改后再二创模式）
   currentEditingHistoryId: string | null;
+  workbenchRevision: number;
   linkInput: string;
   setLinkInput: (val: string) => void;
   targetDurationSec: number;
@@ -99,7 +100,7 @@ interface AppState {
   setHistoryFilterPlatform: (platform: 'all' | 'douyin' | 'xiaohongshu') => void;
   setHistorySearchQuery: (q: string) => void;
   loadHistoryFromSQLite: () => Promise<void>;
-  saveCurrentToHistory: (isRefinementUpdate?: boolean) => Promise<void>;
+  saveGeneratedHistory: (record: HistoryRecord, workbenchRevision: number) => Promise<void>;
   deleteHistoryRecord: (id: string) => Promise<void>;
   loadHistoryToWorkbench: (record: HistoryRecord) => void;
 
@@ -146,6 +147,7 @@ export const useAppStore = create<AppState>()(
       },
 
       currentEditingHistoryId: null,
+      workbenchRevision: 0,
       linkInput: 'https://v.douyin.com/iY8demo9/ 早八打工人3分钟消水肿冰美式制作分享',
       setLinkInput: (val) => set({ linkInput: val }),
       targetDurationSec: 18,
@@ -159,11 +161,15 @@ export const useAppStore = create<AppState>()(
       setParseError: (err) => set({ parseError: err }),
       parsedVideo: DEFAULT_PARSED_VIDEO,
       setParsedVideo: (info) =>
-        set({
-          parsedVideo: info,
+        set((state) => ({
+          workbenchRevision: state.workbenchRevision + 1,
+          currentEditingHistoryId: null,
+          parsedVideo: info ? { ...info } : null,
           editedTranscript: info?.transcript || '',
           editedVisualSummary: info?.visualSummary || '',
-        }),
+          conversationMessages: [], refinementHistory: [],
+          streamingScriptText: '', parsedScript: parseGeneratedScript(''),
+        })),
 
       editedTranscript: DEFAULT_PARSED_VIDEO.transcript,
       setEditedTranscript: (val) => set({ editedTranscript: val }),
@@ -237,6 +243,7 @@ export const useAppStore = create<AppState>()(
           if (index < 0) return state;
           const refinementHistory = state.refinementHistory.slice(0, index + 1);
           return {
+            workbenchRevision: state.workbenchRevision + 1,
             streamingScriptText: version.scriptSnapshot,
             parsedScript: parseGeneratedScript(version.scriptSnapshot),
             conversationMessages: version.conversationMessages?.map((turn) => ({ ...turn })) || refinementHistory.flatMap((item) => [
@@ -269,8 +276,7 @@ export const useAppStore = create<AppState>()(
       loadHistoryFromSQLite: async () => {
         set({ isLoadingHistory: true });
         try {
-          const { historySearchQuery, historyFilterPlatform, selectedHistoryId } =
-            get();
+          const { historySearchQuery, historyFilterPlatform } = get();
           const [records, dbInfo] = await Promise.all([
             fetchHistoryRecordsFromSQLite({
               search: historySearchQuery,
@@ -287,6 +293,7 @@ export const useAppStore = create<AppState>()(
                 : parseGeneratedScript(rec.rawGeneratedScript),
           }));
 
+          const { selectedHistoryId } = get();
           const nextSelected =
             selectedHistoryId &&
             hydratedRecords.some((r) => r.id === selectedHistoryId)
@@ -304,36 +311,12 @@ export const useAppStore = create<AppState>()(
         }
       },
 
-      saveCurrentToHistory: async (isRefinementUpdate = false) => {
-        const state = get();
-        if (!state.parsedVideo || !state.streamingScriptText.trim()) return;
-
-        const parsedStructure = parseGeneratedScript(state.streamingScriptText);
-        const recordId =
-          isRefinementUpdate && state.currentEditingHistoryId
-            ? state.currentEditingHistoryId
-            : `sqlite_${Date.now()}`;
-
-        const recordToSave: HistoryRecord = {
-          id: recordId,
-          platform: state.parsedVideo.platform,
-          sourceUrl: state.parsedVideo.extractedUrl,
-          title: state.parsedVideo.title || '短视频二创脚本',
-          createdAt: new Date().toISOString(),
-          durationSec: state.targetDurationSec,
-          userCameraWork: state.userCameraWork,
-          originalTranscript:
-            state.editedTranscript || state.parsedVideo.transcript,
-          visualSummary:
-            state.editedVisualSummary,
-          rawGeneratedScript: state.streamingScriptText,
-          parsedStructure,
-          refinementHistory: [...state.refinementHistory],
-          conversationMessages: [...state.conversationMessages],
-        };
-
-        await saveHistoryRecordToSQLite(recordToSave);
-        set({ currentEditingHistoryId: recordId, selectedHistoryId: recordId });
+      saveGeneratedHistory: async (record, workbenchRevision) => {
+        await saveHistoryRecordToSQLite(record);
+        // 保存期间允许打开其他记录，但不能把当前工作台重新绑定到旧请求。
+        if (get().workbenchRevision === workbenchRevision) {
+          set({ currentEditingHistoryId: record.id, selectedHistoryId: record.id });
+        }
         await get().loadHistoryFromSQLite();
       },
 
@@ -343,13 +326,14 @@ export const useAppStore = create<AppState>()(
       },
 
       loadHistoryToWorkbench: (record) =>
-        set({
+        set((state) => ({
+          workbenchRevision: state.workbenchRevision + 1,
           activeNav: 'workbench',
           currentEditingHistoryId: record.id,
           linkInput: record.sourceUrl,
           targetDurationSec: record.durationSec,
           userCameraWork: record.userCameraWork,
-          parsedVideo: {
+          parsedVideo: record.sourceContent ? { ...record.sourceContent } : {
             platform: record.platform,
             extractedUrl: record.sourceUrl,
             title: record.title,
@@ -370,7 +354,7 @@ export const useAppStore = create<AppState>()(
           conversationMessages: [...(record.conversationMessages || [])],
           parseError: null,
           generateError: null,
-        }),
+        })),
 
       // Phase 3: 本地知识库文档管理
       knowledgeDocs: [],
@@ -394,12 +378,7 @@ export const useAppStore = create<AppState>()(
         await get().loadKnowledgeDocsFromSQLite();
       },
 
-      keywords: [
-        { id: 'kw_1', text: '零脂冷萃冻干咖啡', category: 'brand' },
-        { id: 'kw_2', text: '3秒冷水即溶', category: 'jargon' },
-        { id: 'kw_3', text: '早八消水肿提神', category: 'jargon' },
-        { id: 'kw_4', text: '第一、最顶级、绝对有效', category: 'forbidden' },
-      ],
+      keywords: [],
       addKeyword: (text, category) =>
         set((state) => {
           const trimmed = text.trim();
@@ -417,12 +396,11 @@ export const useAppStore = create<AppState>()(
         })),
 
       settings: {
-        companyBusinessProfile:
-          '主营精品零脂冷萃冻干咖啡与办公室便携冲调饮品，主打3秒冷水即溶、零蔗糖轻负担与早八高效提神场景',
+        companyBusinessProfile: '',
         llmProvider: 'deepseek',
         llmApiKey: '',
-        llmBaseUrl: 'https://api.deepseek.com/v1',
-        llmModel: 'deepseek-chat',
+        llmBaseUrl: '',
+        llmModel: '',
         videoParserApiKey: '',
         videoParserEndpoint: '',
         enableMockFallback: true,
@@ -434,12 +412,22 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'video-remix-ai-full-v3-storage',
+      version: 1,
+      migrate: (stored: any) => ({ ...stored, settings: { ...stored?.settings, llmApiKey: '', videoParserApiKey: '' } }),
+      merge: (stored: any, current) => ({ ...current, ...stored,
+        settings: { ...current.settings, ...stored?.settings, llmApiKey: '', videoParserApiKey: '' } }),
+      onRehydrateStorage: () => (state, error) => {
+        if (state && !error) queueMicrotask(() => state.updateSettings({ llmApiKey: '', videoParserApiKey: '' }));
+      },
       partialize: (state) => ({
         linkInput: state.linkInput,
+        parsedVideo: state.parsedVideo,
+        editedTranscript: state.editedTranscript,
+        editedVisualSummary: state.editedVisualSummary,
         targetDurationSec: state.targetDurationSec,
         userCameraWork: state.userCameraWork,
         keywords: state.keywords,
-        settings: state.settings,
+        settings: { ...state.settings, llmApiKey: '', videoParserApiKey: '' },
       }),
     }
   )

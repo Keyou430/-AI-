@@ -12,3 +12,8 @@ release/
 *.db
 .DS_Store
 Thumbs.db
+
+dist-server/
+auth-data/
+*.pem
+*.key
