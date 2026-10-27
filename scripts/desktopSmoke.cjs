@@ -43,7 +43,19 @@ app.on('browser-window-created', (_event, window) => {
         'document.querySelector("[name=displayName]").value="测试管理员";' +
         'document.querySelector("[name=password]").value=' + JSON.stringify(password) + ';' +
         'document.querySelector("form").requestSubmit();');
-      await waitFor(window, "document.body.innerText.includes('账号管理')");
+      await waitFor(window, 'Boolean(document.querySelector("nav button[aria-label=账号管理]"))');
+      assert.equal((await call('listHistoryFromDB')).records.length, 0);
+      // 演示验收显式启用仿真；新设备默认关闭。
+      await window.webContents.executeJavaScript('document.querySelector("nav button[aria-label=设置]").click()');
+      await waitFor(window, 'Boolean(document.querySelector("[aria-label=设置分类]"))');
+      await window.webContents.executeJavaScript('Array.from(document.querySelectorAll("[aria-label=设置分类] [role=tab]")).find(el => el.textContent === "系统设置").click()');
+      await waitFor(window, 'Boolean(Array.from(document.querySelectorAll("label")).find(el => el.textContent.includes("启用仿真模式")))');
+      assert.equal(await window.webContents.executeJavaScript('Array.from(document.querySelectorAll("label")).find(el => el.textContent.includes("启用仿真模式")).querySelector("input").checked'), false);
+      await window.webContents.executeJavaScript('Array.from(document.querySelectorAll("label")).find(el => el.textContent.includes("启用仿真模式")).querySelector("input").click();document.querySelector("nav button[aria-label=二创工作台]").click()');
+      // 新工作台不预填演示素材；显式输入后才提取。
+      assert.equal(await window.webContents.executeJavaScript('document.querySelector("[data-testid=editable-transcript]").value'), '');
+      assert.equal(await window.webContents.executeJavaScript('Boolean(document.querySelector("[data-testid=script-empty]"))'), true);
+      await window.webContents.executeJavaScript('{ const input = document.querySelector("[name=sourceVideoUrl]"); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(input,"https://v.douyin.com/demo/"); input.dispatchEvent(new Event("input",{bubbles:true})); }');
       // 提取不自动二创，人工修改后才生成；原稿和修改稿分别保存。
       const beforeExtract = (await call('listHistoryFromDB')).records.length;
       await window.webContents.executeJavaScript('document.querySelector("[data-testid=extract-video]").click()');
@@ -62,7 +74,7 @@ app.on('browser-window-created', (_event, window) => {
         refinementHistory:[],conversationMessages:[]};
       assert.equal((await call('saveHistoryToDB',otherRecord)).success,true);
       const refine = async (instruction) => {
-        await window.webContents.executeJavaScript('Array.from(document.querySelectorAll("button")).find(el => el.textContent.includes("多轮对话优化")).click()');
+        await window.webContents.executeJavaScript('document.querySelector("[data-testid=optimize-script]").click()');
         await waitFor(window, 'Boolean(document.querySelector("#optimize-form textarea"))');
         await window.webContents.executeJavaScript(
           '{ const textarea = document.querySelector("#optimize-form textarea");' +
@@ -70,12 +82,12 @@ app.on('browser-window-created', (_event, window) => {
           'textarea.dispatchEvent(new Event("input",{bubbles:true})); }');
         await waitFor(window, '!document.querySelector("button[form=optimize-form]").disabled');
         await window.webContents.executeJavaScript('document.querySelector("#optimize-form").requestSubmit()');
-        await waitFor(window, 'document.body.innerText.includes("AI 结合业务二创中")');
+        await waitFor(window, 'document.querySelector("[data-testid=generate-script]")?.textContent.includes("生成中")');
       };
       await refine('强化原记录A的产品卖点');
-      await window.webContents.executeJavaScript('Array.from(document.querySelectorAll("nav button")).find(el => el.textContent.includes("历史记录")).click()');
+      await window.webContents.executeJavaScript('document.querySelector("nav button[aria-label=历史记录]").click()');
       await waitFor(window, 'document.body.innerText.includes("切换记录B")');
-      await window.webContents.executeJavaScript('Array.from(document.querySelectorAll("div.cursor-pointer")).find(el => el.textContent.includes("切换记录B")).click()');
+      await window.webContents.executeJavaScript('document.querySelector("[data-record-id=smoke-race-b]").click()');
       await window.webContents.executeJavaScript('Array.from(document.querySelectorAll("button")).find(el => el.textContent.includes("重新编辑")).click()');
       await waitFor(window, 'document.querySelector("textarea")?.value === "记录B独立口播"');
       await waitFor(window, 'Boolean(document.querySelector("[data-testid=extract-video]:not(:disabled)"))');
@@ -83,7 +95,7 @@ app.on('browser-window-created', (_event, window) => {
       assert.equal(afterRefine.find(record => record.id === otherRecord.id).rawGeneratedScript,otherRecord.rawGeneratedScript);
       assert.equal(afterRefine.find(record => record.id === manualRecord.id).refinementHistory.length,manualRecord.refinementHistory.length + 1);
       assert.equal(await window.webContents.executeJavaScript('document.querySelector("textarea").value'),otherRecord.originalTranscript);
-      await window.webContents.executeJavaScript('Array.from(document.querySelectorAll("[role=tab]")).find(el => el.textContent.includes("标准格式全文")).dispatchEvent(new MouseEvent("mousedown",{bubbles:true,button:0,ctrlKey:false}))');
+      await window.webContents.executeJavaScript('Array.from(document.querySelectorAll("[role=tab]")).find(el => el.textContent.trim() === "全文").click()');
       await waitFor(window, 'document.querySelector("[role=tabpanel] pre")?.textContent === "记录B独立脚本"');
       // 模拟数据库写入失败，确认界面保留生成结果、显示失败原因并解除忙碌状态。
       const { LocalSQLiteManager } = require(path.join(applicationPath,'dist-electron','db','sqliteService.js'));
@@ -103,9 +115,13 @@ app.on('browser-window-created', (_event, window) => {
       assert.equal(status.user.username,'admin');
       assert.equal(status.user.password_hash,undefined);
       assert.equal((await call('setUserActive',{userId:status.user.id,active:false})).errorCode,'PROTECTED_ACCOUNT');
-      await window.webContents.executeJavaScript('Array.from(document.querySelectorAll("nav button")).find(el => el.textContent.includes("账号管理")).click()');
+      await window.webContents.executeJavaScript('document.querySelector("nav button[aria-label=账号管理]").click()');
       await waitFor(window, "document.body.innerText.includes('新增账号')");
-      await window.webContents.executeJavaScript('Array.from(document.querySelectorAll("nav button")).find(el => el.textContent.includes("系统设置")).click()');
+      await window.webContents.executeJavaScript('document.querySelector("nav button[aria-label=设置]").click()');
+      await waitFor(window, 'Boolean(document.querySelector("[aria-label=设置分类]"))');
+      await window.webContents.executeJavaScript('Array.from(document.querySelectorAll("[aria-label=设置分类] [role=tab]")).find(el => el.textContent === "系统设置").click()');
+      await waitFor(window, 'Array.from(document.querySelectorAll("summary")).some(el => el.textContent.includes("诊断与日志"))');
+      await window.webContents.executeJavaScript('Array.from(document.querySelectorAll("summary")).find(el => el.textContent.includes("诊断与日志")).click()');
       await waitFor(window, 'document.body.innerText.includes("打开运行日志")');
       const originalOpenPath = shell.openPath;
       let resolveOpenPath;
@@ -132,7 +148,7 @@ app.on('browser-window-created', (_event, window) => {
       const missingKey = await call('generateScriptStream',{requestId:'smoke',config:{apiKey:'',baseURL:'',model:''},
         systemPrompt:'',userPrompt:'',targetDurationSec:18,userCameraWork:'',enableMockFallback:false});
       assert.equal(missingKey.success,false);
-      assert.ok(missingKey.error.includes('API Key'));
+      assert.ok(missingKey.error.includes('接口密钥'));
       const knowledge = await call('parseKnowledgeBuffer',{name:'验证资料.txt',sizeBytes:0,base64Data:Buffer.from('真实业务资料').toString('base64')});
       assert.equal(knowledge.success,true); assert.equal(knowledge.doc.fullContent,'真实业务资料');
       for (const [name,expected] of [['knowledge.pdf','Company knowledge sample'],['knowledge.docx','企业知识库：核心产品与业务卖点。']]) {
@@ -152,8 +168,8 @@ app.on('browser-window-created', (_event, window) => {
       // 重载前端，确认普通成员无法看到账号管理入口。
       await window.webContents.reload();
       await new Promise((resolve) => window.webContents.once('did-finish-load',resolve));
-      await waitFor(window, "document.body.innerText.includes('二创工作台')");
-      assert.equal(await window.webContents.executeJavaScript("Array.from(document.querySelectorAll('nav button')).some(el => el.textContent.includes('账号管理'))"),false);
+      await waitFor(window, 'Boolean(document.querySelector("[data-testid=editable-transcript]"))');
+      assert.equal(await window.webContents.executeJavaScript("Boolean(document.querySelector('nav button[aria-label=账号管理]'))"),false);
       await call('login',{username:'admin',password});
       await call('setUserActive',{userId:created.user.id,active:false});
       assert.equal((await call('login',{username:'smoke_member',password})).errorCode,'ACCOUNT_DISABLED');

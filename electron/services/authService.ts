@@ -149,6 +149,18 @@ export class AuthService {
     }
   }
 
+  async deleteUser(senderId: number, userId: string): Promise<void> {
+    const actor = await this.requireUser(senderId, true);
+    const user = this.db.findUser('id', userId);
+    if (!user) throw new AuthError('USER_NOT_FOUND', '账号不存在，可能已被其他管理员删除');
+    if (user.username === 'admin' || user.id === actor.id) {
+      throw new AuthError('PROTECTED_ACCOUNT', '不能删除内置管理员或当前登录账号');
+    }
+    this.db.deleteUser(userId);
+    this.userRevisions.set(userId, (this.userRevisions.get(userId) || 0) + 1);
+    for (const [sessionId, id] of this.sessions) if (id === userId) this.logout(sessionId);
+  }
+
   async resetPassword(senderId: number, userId: string, password: string): Promise<void> {
     await this.requireUser(senderId, true);
     const fields = await passwordFields(password);

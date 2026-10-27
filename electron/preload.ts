@@ -16,6 +16,8 @@ export interface StreamErrorEvent {
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  getStorageLocation: () => ipcRenderer.invoke('storage:get'),
+  chooseStorageLocation: () => ipcRenderer.invoke('storage:choose'),
   getProviderSettings: () => ipcRenderer.invoke('providers:get'),
   saveProviderSettings: (input: unknown) => ipcRenderer.invoke('providers:save', input),
   getAuthStatus: () => ipcRenderer.invoke('auth:status'),
@@ -29,6 +31,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listUsers: () => ipcRenderer.invoke('auth:users'),
   createUser: (input: { username: string; password: string; displayName: string; role: 'admin' | 'member' }) => ipcRenderer.invoke('auth:create-user', input),
   setUserActive: (input: { userId: string; active: boolean }) => ipcRenderer.invoke('auth:set-active', input),
+  deleteUser: (input: { userId: string }) => ipcRenderer.invoke('auth:delete-user', input),
   resetUserPassword: (input: { userId: string; password: string }) => ipcRenderer.invoke('auth:reset-password', input),
   onAuthRequired: (callback: (data: { message: string }) => void) => {
     const listener = (_event: unknown, data: { message: string }) => callback(data);

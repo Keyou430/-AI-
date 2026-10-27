@@ -1,3 +1,4 @@
+import { userFacingError } from './userFacingError';
 /**
  * [Phase 1 & Phase 3] AI 与大模型集成层
  * - 采用 OpenAI 标准 Node.js SDK，内置硬编码默认配置（DeepSeek 标准端点），支持动态切换千问/豆包/Kimi/OpenAI
@@ -50,7 +51,7 @@ export async function testLLMConnection(
   if (!apiKey) {
     return {
       success: false,
-      message: '请先填写有效的大模型 API Key 后再测试真实连接（未填 Key 时系统默认使用内置仿真流式引擎）。',
+      message: '请先填写有效的模型接口密钥，再测试真实连接。',
     };
   }
 
@@ -62,25 +63,24 @@ export async function testLLMConnection(
       baseURL: config.baseURL?.trim() || DEFAULT_HARDCODED_LLM_CONFIG.baseURL,
     });
 
-    const response = await client.chat.completions.create({
+    await client.chat.completions.create({
       model: config.model?.trim() || DEFAULT_HARDCODED_LLM_CONFIG.model,
       messages: [{ role: 'user', content: '请回复：连接成功' }],
       max_tokens: 16,
     }, { signal });
 
     const latencyMs = Date.now() - startTime;
-    const reply = response.choices?.[0]?.message?.content?.trim() || 'OK';
     return {
       success: true,
       latencyMs,
-      message: `连接成功（模型：${config.model}，响应耗时 ${latencyMs}ms，返回：${reply}）`,
+      message: `连接成功（模型：${config.model}，响应耗时 ${latencyMs} 毫秒）`,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     signal?.throwIfAborted();
     onError?.(err);
     return {
       success: false,
-      message: `连接失败：${err?.message || '请检查 API Key、Base URL 与网络环境'}`,
+      message: userFacingError(err, '连接失败，请检查接口密钥、接口地址与网络环境。'),
     };
   }
 }
@@ -162,7 +162,7 @@ export async function streamGenerateScript(
   const apiKey = req.config.apiKey?.trim() || DEFAULT_HARDCODED_LLM_CONFIG.apiKey;
 
   if (!req.enableMockFallback && !apiKey) {
-    throw new Error('请先填写有效的大模型 API Key，或开启仿真模式。');
+    throw new Error('请先填写有效的模型接口密钥，或开启仿真模式。');
   }
 
   if (!req.enableMockFallback) {

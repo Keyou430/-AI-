@@ -1,6 +1,6 @@
 {
   "name": "video-remix-ai-assistant",
-  "version": "1.0.6",
+  "version": "1.0.11",
   "description": "面向企业新媒体团队的视频脚本二创桌面助手",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -20,6 +20,8 @@
     "smoke:persistence": "node scripts/desktopPersistenceSmoke.cjs"
   },
   "dependencies": {
+    "@base-ui/react": "^1.9.0",
+    "@fontsource-variable/dm-sans": "^5.3.0",
     "@radix-ui/react-dialog": "^1.1.1",
     "@radix-ui/react-slot": "^1.1.0",
     "@radix-ui/react-switch": "^1.1.0",
@@ -29,6 +31,7 @@
     "clsx": "^2.1.1",
     "lucide-react": "^0.454.0",
     "mammoth": "^1.8.0",
+    "motion": "^14.6.0",
     "openai": "^4.71.0",
     "pdf-parse": "^1.1.1",
     "react": "^18.3.1",

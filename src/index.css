@@ -1,30 +1,240 @@
+@import '@fontsource-variable/dm-sans';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 210 40% 98%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 240 10% 98%;
+    --foreground: 240 14% 13%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --primary: 238 77% 58%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 238 77% 58%;
-    --radius: 0.65rem;
+    --card-foreground: 240 14% 13%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 14% 13%;
+    --primary: 245 58% 51%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 6% 95%;
+    --secondary-foreground: 240 10% 25%;
+    --muted: 240 6% 96%;
+    --muted-foreground: 240 5% 43%;
+    --accent: 245 55% 96%;
+    --accent-foreground: 245 58% 42%;
+    --destructive: 0 65% 44%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 7% 90%;
+    --input: 240 7% 85%;
+    --ring: 245 58% 51%;
+    --sidebar: 240 10% 97%;
+    --success: 155 63% 28%;
+    --warning: 30 85% 32%;
+    --radius: 0.625rem;
+  }
+  * {
+    @apply border-border;
+  }
+  html {
+    color-scheme: light;
+  }
+  html,
+  body,
+  #root {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+  body {
+    @apply m-0 bg-background text-foreground antialiased;
+    font-family: 'DM Sans Variable', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+  button,
+  a,
+  input,
+  textarea,
+  select,
+  summary,
+  [tabindex] {
+    -webkit-tap-highlight-color: transparent;
+  }
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 3px;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+  ::selection {
+    background: hsl(var(--accent));
+    color: hsl(var(--accent-foreground));
+  }
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border: 1px solid transparent;
+    border-radius: 5px;
+    background-clip: padding-box;
   }
 }
 
-body {
-  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+@layer components {
+  .field {
+    @apply w-full min-w-0 rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground transition-colors focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/10 disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60;
+  }
+  .field-label {
+    @apply mb-2 block text-xs font-medium text-muted-foreground;
+  }
+  .surface {
+    @apply min-w-0 rounded-lg border border-border bg-card;
+  }
+  .section-title {
+    @apply text-sm font-semibold tracking-tight text-foreground;
+  }
+  .muted-copy {
+    @apply text-xs leading-relaxed text-muted-foreground;
+  }
+  .disclosure {
+    @apply rounded-md border border-border px-3 py-2 text-xs text-muted-foreground;
+  }
+  .disclosure > summary {
+    @apply cursor-pointer py-1 font-medium text-foreground;
+  }
+  .tab-list {
+    @apply flex min-w-0 items-center gap-1 overflow-x-auto;
+    scrollbar-width: none;
+  }
+  .tab {
+    @apply relative shrink-0 rounded-md px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground;
+  }
+  .tab[data-active],
+  .tab[data-state='active'] {
+    @apply bg-accent text-accent-foreground;
+  }
+  .reading-text {
+    @apply whitespace-pre-wrap break-words text-sm leading-[1.9] text-foreground;
+    overflow-wrap: anywhere;
+  }
+  .status-note {
+    @apply flex items-start gap-2 rounded-md bg-muted px-3 py-2.5 text-xs leading-relaxed text-muted-foreground;
+  }
+  .composer {
+    @apply overflow-hidden rounded-lg border border-input bg-card transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/10;
+  }
+  .composer[data-dragging='true'] {
+    @apply border-primary bg-accent;
+  }
+  .composer[data-busy='true'] {
+    @apply border-border bg-muted/50;
+  }
+  .toast-viewport {
+    @apply pointer-events-none fixed right-4 z-[100] flex w-[min(400px,calc(100vw-32px))] flex-col gap-2 outline-none;
+    top: max(16px, env(safe-area-inset-top));
+  }
+  .toast-item {
+    @apply pointer-events-auto flex items-start gap-3 rounded-lg border bg-popover p-4 text-popover-foreground shadow-lg;
+    transition: opacity 160ms ease, transform 160ms ease;
+  }
+  .toast-item[data-limited] { display: none; }
+  .toast-item[data-starting-style],
+  .toast-item[data-ending-style] {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  .dialog-backdrop {
+    @apply fixed inset-0 z-40 bg-foreground/25;
+    transition: opacity 160ms ease;
+  }
+  .dialog-backdrop[data-starting-style],
+  .dialog-backdrop[data-ending-style] {
+    opacity: 0;
+  }
+  .dialog-viewport {
+    @apply fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-3 sm:p-6;
+  }
+  .dialog-popup {
+    @apply flex max-h-[90dvh] w-full max-w-xl flex-col overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-xl;
+    transition:
+      opacity 160ms ease,
+      transform 160ms ease;
+  }
+  .dialog-popup[data-starting-style],
+  .dialog-popup[data-ending-style] {
+    opacity: 0;
+    transform: translateY(6px) scale(0.99);
+  }
+  .drawer-popup {
+    @apply fixed inset-y-0 left-0 z-50 flex w-[min(85vw,288px)] flex-col border-r border-border bg-card;
+    transition: transform 180ms ease;
+  }
+  .drawer-popup[data-starting-style],
+  .drawer-popup[data-ending-style] {
+    transform: translateX(-100%);
+  }
+  .settings-page {
+    @apply relative overscroll-y-contain bg-background p-4 md:p-6 lg:p-8;
+  }
+  .settings-page section {
+    box-shadow: none;
+  }
+  .settings-page .rounded-2xl {
+    border-radius: var(--radius);
+  }
+  .settings-page .bg-indigo-600 {
+    background-color: hsl(var(--primary));
+  }
+  .settings-page .text-indigo-600,
+  .settings-page .text-indigo-700 {
+    color: hsl(var(--accent-foreground));
+  }
+  .settings-page .text-xs {
+    line-height: 1.7;
+  }
+}
+
+@media (max-width: 767px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+  button {
+    touch-action: manipulation;
+  }
+  .dialog-viewport {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .dialog-viewport[data-centered] {
+    align-items: center;
+    padding: 12px;
+  }
+  .dialog-viewport[data-centered] .dialog-popup {
+    border-radius: var(--radius);
+  }
+  .dialog-popup {
+    max-height: 92dvh;
+    border-radius: 16px 16px 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

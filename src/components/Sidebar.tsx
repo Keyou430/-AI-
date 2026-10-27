@@ -1,151 +1,229 @@
-import React from 'react';
+import { useEffect, useState } from 'react';
+import { Dialog } from '@base-ui/react/dialog';
+import { Tooltip } from '@base-ui/react/tooltip';
+import { AnimatePresence, motion } from 'motion/react';
 import {
-  Sparkles,
-  History,
-  Settings,
   Film,
-  CheckCircle2,
-  Cpu,
+  History,
+  LogOut,
+  Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Settings,
+  Sparkles,
+  Users,
+  X,
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useAppStore } from '../store/useAppStore';
-import { ActiveNavTab } from '../types';
+import type { ActiveNavTab } from '../types';
 import { cn } from '../lib/utils';
+import { Button } from './ui/Button';
 
-export const Sidebar: React.FC = () => {
-  const { activeNav, setActiveNav, historyRecords, settings, knowledgeDocs } =
-    useAppStore();
-
-  const navItems: Array<{
-    id: ActiveNavTab;
-    label: string;
-    desc: string;
-    icon: React.ReactNode;
-    badge?: string | number;
-  }> = [
-    {
-      id: 'workbench',
-      label: '二创工作台',
-      desc: '提取链接与生成脚本',
-      icon: <Sparkles className="w-5 h-5" />,
-    },
-    {
-      id: 'history',
-      label: '历史记录',
-      desc: '管理与导出二创记录',
-      icon: <History className="w-5 h-5" />,
-      badge: historyRecords.length,
-    },
-    {
-      id: 'settings',
-      label: '系统设置',
-      desc: '知识库、关键词与API',
-      icon: <Settings className="w-5 h-5" />,
-    },
-  ];
-
+export function Sidebar() {
+  const activeNav = useAppStore((state) => state.activeNav);
+  const setActiveNav = useAppStore((state) => state.setActiveNav);
+  const historyCount = useAppStore((state) => state.historyRecords.length);
+  const sidebarCollapsed = useAppStore((state) => state.sidebarCollapsed);
+  const setSidebarCollapsed = useAppStore((state) => state.setSidebarCollapsed);
   const { user, signOut } = useAuthStore();
-  if (user?.role === 'admin') navItems.push({ id: 'accounts', label: '账号管理', desc: '成员权限与账号状态', icon: <Settings className="w-5 h-5" /> });
-
-  const activeKbCount = knowledgeDocs.filter((d) => d.enabled).length;
-
-  return (
-    <aside className="w-64 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 select-none">
-      <div>
-        {/* 顶部品牌标识 */}
-        <div className="p-5 border-b border-slate-100 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-sm shadow-indigo-200">
-            <Film className="w-5 h-5" />
-          </div>
-          <div>
-            <h1 className="text-base font-bold text-slate-900 tracking-tight">
-              视频二创AI助手
-            </h1>
-            <p className="text-xs text-slate-500">桌面创作工作台</p>
-          </div>
-        </div>
-
-        <div className="px-5 py-3 flex justify-between items-center text-sm text-slate-600">
-          <span>{user?.displayName}</span>
-          <button onClick={() => { setActiveNav('workbench'); void signOut(); }} className="text-indigo-600">退出登录</button>
-        </div>
-        {/* 导航列表 */}
-        <nav className="p-3 space-y-1.5">
-          {navItems.map((item) => {
-            const isActive = activeNav === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => setActiveNav(item.id)}
-                className={cn(
-                  'w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-left transition-all',
-                  isActive
-                    ? 'bg-indigo-50/90 text-indigo-700 font-semibold shadow-sm ring-1 ring-indigo-200/60'
-                    : 'text-slate-600 hover:bg-slate-100/80 hover:text-slate-900'
-                )}
-              >
-                <div className="flex items-center gap-3">
-                  <span
-                    className={cn(
-                      'p-1.5 rounded-lg',
-                      isActive
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-slate-100 text-slate-500'
-                    )}
-                  >
-                    {item.icon}
-                  </span>
-                  <div>
-                    <div className="text-sm leading-none">{item.label}</div>
-                    <div className="text-[11px] text-slate-400 mt-1 font-normal">
-                      {item.desc}
-                    </div>
-                  </div>
-                </div>
-                {item.badge !== undefined && (
-                  <span
-                    className={cn(
-                      'text-xs px-2 py-0.5 rounded-full font-medium',
-                      isActive
-                        ? 'bg-indigo-100 text-indigo-700'
-                        : 'bg-slate-100 text-slate-600'
-                    )}
-                  >
-                    {item.badge}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </nav>
-      </div>
-
-      {/* 底部运行状态卡片 */}
-      <div className="p-3.5 m-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2.5">
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-slate-500 flex items-center gap-1.5">
-            <Cpu className="w-3.5 h-3.5 text-indigo-600" />
-            当前模型
-          </span>
-          <span className="font-medium text-slate-800 truncate max-w-[110px]">
-            {settings.llmModel || 'deepseek-chat'}
-          </span>
-        </div>
-
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-slate-500">已挂载知识库</span>
-          <span className="font-medium text-indigo-600">{activeKbCount} 份文档</span>
-        </div>
-
-        <div className="pt-1.5 border-t border-slate-200/70 flex items-center gap-1.5 text-[11px] text-emerald-700">
-          <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
-          <span>
-            {settings.llmApiKey.trim() && !settings.enableMockFallback
-              ? '直连大模型 API 模式'
-              : 'MVP 仿真流式引擎已就绪'}
-          </span>
-        </div>
-      </div>
-    </aside>
+  const [open, setOpen] = useState(false);
+  const [compactViewport, setCompactViewport] = useState(
+    () => !window.matchMedia('(min-width: 1280px)').matches
   );
-};
+  const collapsed = sidebarCollapsed ?? compactViewport;
+  useEffect(() => {
+    const desktop = window.matchMedia('(min-width: 1280px)');
+    const mobile = window.matchMedia('(max-width: 767px)');
+    const update = () => {
+      setCompactViewport(!desktop.matches);
+      if (!mobile.matches) setOpen(false);
+    };
+    update();
+    desktop.addEventListener('change', update);
+    mobile.addEventListener('change', update);
+    return () => {
+      desktop.removeEventListener('change', update);
+      mobile.removeEventListener('change', update);
+    };
+  }, []);
+  const items = [
+    { id: 'workbench' as const, label: '二创工作台', icon: Sparkles },
+    { id: 'history' as const, label: '历史记录', icon: History },
+    { id: 'settings' as const, label: '设置', icon: Settings },
+    ...(user?.role === 'admin'
+      ? [{ id: 'accounts' as const, label: '账号管理', icon: Users }]
+      : []),
+  ];
+  const navigate = (id: ActiveNavTab) => {
+    setActiveNav(id);
+    setOpen(false);
+  };
+  const content = (mobile: boolean) => {
+    const compact = !mobile && collapsed;
+    return (
+      <>
+        <div
+          className={cn(
+            'flex h-20 shrink-0 items-center gap-3',
+            compact ? 'justify-center' : 'px-5'
+          )}
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-foreground text-card">
+            <Film size={18} strokeWidth={1.7} />
+          </span>
+          {!compact && <p className="min-w-0 text-sm font-semibold tracking-tight">视频二创</p>}
+        </div>
+        <nav
+          id={mobile ? 'mobile-navigation' : 'desktop-navigation'}
+          aria-label="主导航"
+          className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-y-contain px-3 pt-3"
+        >
+          {items.map(({ id, label, icon: Icon }) => (
+            <Tooltip.Root key={id} disabled={!compact}>
+              <Tooltip.Trigger
+                render={
+                  <button
+                    type="button"
+                    aria-current={activeNav === id ? 'page' : undefined}
+                    aria-label={label}
+                    onClick={() => navigate(id)}
+                    className={cn(
+                      'relative flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-left text-sm transition-colors',
+                      activeNav === id
+                        ? 'font-medium text-accent-foreground'
+                        : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
+                      compact && 'justify-center'
+                    )}
+                  />
+                }
+              >
+                <AnimatePresence>
+                  {activeNav === id && (
+                    <motion.span
+                      layoutId={mobile ? 'mobile-nav' : 'desktop-nav'}
+                      className="absolute inset-0 rounded-md bg-accent"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.14 }}
+                    />
+                  )}
+                </AnimatePresence>
+                <Icon className="relative h-[18px] w-[18px] shrink-0" strokeWidth={1.7} />
+                {!compact && <span className="relative">{label}</span>}
+                {!compact && id === 'history' && historyCount > 0 && (
+                  <span className="relative ml-auto text-xs tabular-nums text-muted-foreground">
+                    {historyCount}
+                  </span>
+                )}
+              </Tooltip.Trigger>
+              <Tooltip.Portal>
+                <Tooltip.Positioner side="right" sideOffset={8} className="z-[60]">
+                  <Tooltip.Popup className="rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-sm">
+                    {label}
+                  </Tooltip.Popup>
+                </Tooltip.Positioner>
+              </Tooltip.Portal>
+            </Tooltip.Root>
+          ))}
+        </nav>
+        <div className="mx-3 mb-4 shrink-0 border-t pt-3">
+          {!mobile && (
+            <Button
+              variant="ghost"
+              className={cn('mb-3 w-full', compact ? 'px-0' : 'justify-start px-2')}
+              aria-label={collapsed ? '展开侧栏' : '收起侧栏'}
+              aria-expanded={!collapsed}
+              aria-controls="desktop-navigation"
+              title={collapsed ? '展开侧栏' : '收起侧栏'}
+              onClick={() => setSidebarCollapsed(!collapsed)}
+            >
+              {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
+              {!compact && '收起侧栏'}
+            </Button>
+          )}
+          <div className={cn('flex items-center gap-2', compact ? 'justify-center' : 'px-1')}>
+            {!compact && (
+              <>
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-medium">
+                  {user?.displayName.slice(0, 1) || '用'}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-medium">{user?.displayName}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {user?.role === 'admin' ? '管理员' : '成员'}
+                  </p>
+                </div>
+              </>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="退出登录"
+              title="退出登录"
+              onClick={() => {
+                setOpen(false);
+                setActiveNav('workbench');
+                void signOut();
+              }}
+            >
+              <LogOut size={16} />
+            </Button>
+          </div>
+        </div>
+      </>
+    );
+  };
+  return (
+    <Tooltip.Provider delay={300}>
+      <a
+        href="#main-content"
+        className="sr-only z-[100] rounded-md bg-card p-3 focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
+      >
+        跳到主要内容
+      </a>
+      <aside
+        data-collapsed={collapsed}
+        className={cn(
+          'relative hidden h-full min-h-0 shrink-0 flex-col overflow-hidden border-r bg-sidebar transition-[width] duration-150 md:flex',
+          collapsed ? 'w-[72px]' : 'w-[224px]'
+        )}
+      >
+        {content(false)}
+      </aside>
+      <header className="flex h-14 shrink-0 items-center border-b bg-card px-3 md:hidden">
+        <div className="flex items-center gap-2">
+          <Dialog.Root open={open} onOpenChange={setOpen}>
+            <Dialog.Trigger render={<Button variant="ghost" size="icon" aria-label="打开导航" />}>
+              <Menu />
+            </Dialog.Trigger>
+            <Dialog.Portal>
+              <Dialog.Backdrop className="dialog-backdrop" />
+              <Dialog.Popup className="drawer-popup">
+                <Dialog.Title className="sr-only">导航</Dialog.Title>
+                <Dialog.Description className="sr-only">
+                  选择工作台、历史记录或设置
+                </Dialog.Description>
+                <Dialog.Close
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-2 top-2"
+                      aria-label="关闭导航"
+                    />
+                  }
+                >
+                  <X />
+                </Dialog.Close>
+                {content(true)}
+              </Dialog.Popup>
+            </Dialog.Portal>
+          </Dialog.Root>
+          <span className="text-sm font-semibold">视频二创</span>
+        </div>
+      </header>
+    </Tooltip.Provider>
+  );
+}

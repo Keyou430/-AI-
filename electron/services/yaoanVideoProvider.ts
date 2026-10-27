@@ -16,7 +16,7 @@ export function parseYaoanVideoResponse(payload: unknown, platform: VideoPlatfor
   if (!result || result.success !== true || ![0, '0'].includes(result.code) || !result.data || typeof result.data !== 'object') {
     const code = String(result?.code);
     return { success: false, errorCode: code === '429' || code === '402' ? 'QUOTA_EXHAUSTED' : 'API_ERROR',
-      errorMessage: code === '401' ? 'API Key 无效或已过期，请在设置页更新。'
+      errorMessage: code === '401' ? '接口密钥 无效或已过期，请在设置页更新。'
         : code === '403' ? '厂商余额不足或未开通接口权限，请检查厂商账户。' : '厂商未成功解析该链接，请检查作品是否公开可用后手动重试。' };
   }
   const raw = result.data;

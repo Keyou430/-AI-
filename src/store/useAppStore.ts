@@ -23,28 +23,15 @@ import {
   toggleKnowledgeDocClient,
 } from '../services/ipcClient';
 
-const INITIAL_SAMPLE_SCRIPT = [
-  '【分镜脚本总览】共3个镜头，总时长18秒',
-  '——————',
-  '【镜头1 | 0-5秒】',
-  '▪️人员动作分工：出镜人员在晨光办公桌前展示早起困倦状态随后拿出本公司核心产品零脂冷萃冻干咖啡，摄影师由桌面一侧向杯口方向平稳推进抓拍动作',
-  '▪️运镜与拍摄执行标准：景别为近景，运镜手法采用近景俯拍、特写推进、中景平视跟随，灯光为柔和窗边自然光搭配暖色辅光，角度为四十五度俯视角度',
-  '▪️声音内容：每天早起状态困倦没精神？教你用咱们零脂冷萃冻干咖啡三十秒复刻高颜值消水肿冰美式！',
-  '——————',
-  '【镜头2 | 5-11秒】',
-  '▪️人员动作分工：出镜人员先倒入八分满零脂椰子水再沿冰块缓缓注入零脂冷萃冻干咖啡浓缩液展现本公司精品冷萃品质细节，摄影师围绕杯身侧面捕捉液体分层光影变化',
-  '▪️运镜与拍摄执行标准：景别为特写，运镜手法采用近景俯拍、特写推进、中景平视跟随，灯光为侧逆光勾勒杯壁水珠质感，角度为水平正侧角度',
-  '▪️声音内容：仅环境音，冰块撞击玻璃杯壁的清脆声与液体缓慢注入的流淌声',
-  '——————',
-  '【镜头3 | 11-18秒】',
-  '▪️人员动作分工：出镜人员拿起成品冰美式微笑品尝并顺势打开电脑开始高效办公，摄影师跟随人物抬手动作平滑移动至桌面全景',
-  '▪️运镜与拍摄执行标准：景别为中景，运镜手法采用近景俯拍、特写推进、中景平视跟随，灯光为均匀主光加背景轮廓光，角度为正面平视角度',
-  '▪️声音内容：零脂轻负担且清甜回甘，让零脂冷萃冻干咖啡陪你开启高效专注的每一个工作日！',
-].join('\n');
+type SettingsTab = 'content' | 'system';
 
 interface AppState {
   activeNav: ActiveNavTab;
-  setActiveNav: (tab: ActiveNavTab) => void;
+  sidebarCollapsed: boolean | null;
+  setSidebarCollapsed: (collapsed: boolean) => void;
+  setActiveNav: (tab: ActiveNavTab, settingsTab?: SettingsTab) => void;
+  settingsTab: SettingsTab;
+  setSettingsTab: (tab: SettingsTab) => void;
 
   // 工作台状态（支持全自动模式 + 仅提取手动修改后再二创模式）
   currentEditingHistoryId: string | null;
@@ -120,25 +107,16 @@ interface AppState {
   updateSettings: (partial: Partial<AppSettings>) => void;
 }
 
-const DEFAULT_PARSED_VIDEO: ParsedVideoInfo = {
-  platform: 'douyin',
-  extractedUrl: 'https://v.douyin.com/iY8demo9/',
-  title: '早八打工人3分钟消水肿冰美式制作与桌面效率好物分享',
-  author: '阿泽的效率工坊',
-  durationSec: 18,
-  transcript:
-    '每天早上起来脸肿得像发面馒头？别再喝普通速溶了！教你一招我连喝四周的消水肿冰萃法：先往杯子里加满八分冰块，倒入零脂椰子水垫底，再把双份浓缩咖啡沿着冰块慢慢淋上去。只需三十秒，不仅口感清爽回甘，上午开会脑子瞬间清醒！',
-  visualSummary:
-    '清晨阳光洒进极简办公桌，博主手持玻璃杯展示冰块落杯特写，随后注入清澈椰子水与深褐色浓缩咖啡形成漂亮分层，最后博主微笑举杯饮用并进入工作状态。',
-  suggestedCameraWork: '近景俯拍、特写推进、中景平视跟随',
-};
-
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
       activeNav: 'workbench',
-      setActiveNav: (tab) => {
-        set({ activeNav: tab });
+      sidebarCollapsed: null,
+      setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
+      settingsTab: 'content',
+      setSettingsTab: (tab) => set({ settingsTab: tab }),
+      setActiveNav: (tab, settingsTab = 'content') => {
+        set({ activeNav: tab, ...(tab === 'settings' ? { settingsTab } : {}) });
         if (tab === 'history') {
           get().loadHistoryFromSQLite();
         } else if (tab === 'settings') {
@@ -148,18 +126,18 @@ export const useAppStore = create<AppState>()(
 
       currentEditingHistoryId: null,
       workbenchRevision: 0,
-      linkInput: 'https://v.douyin.com/iY8demo9/ 早八打工人3分钟消水肿冰美式制作分享',
+      linkInput: '',
       setLinkInput: (val) => set({ linkInput: val }),
       targetDurationSec: 18,
       setTargetDurationSec: (sec) => set({ targetDurationSec: sec }),
-      userCameraWork: '近景俯拍、特写推进、中景平视跟随',
+      userCameraWork: '',
       setUserCameraWork: (val) => set({ userCameraWork: val }),
 
       isParsingVideo: false,
       setIsParsingVideo: (loading) => set({ isParsingVideo: loading }),
       parseError: null,
       setParseError: (err) => set({ parseError: err }),
-      parsedVideo: DEFAULT_PARSED_VIDEO,
+      parsedVideo: null,
       setParsedVideo: (info) =>
         set((state) => ({
           workbenchRevision: state.workbenchRevision + 1,
@@ -171,9 +149,9 @@ export const useAppStore = create<AppState>()(
           streamingScriptText: '', parsedScript: parseGeneratedScript(''),
         })),
 
-      editedTranscript: DEFAULT_PARSED_VIDEO.transcript,
+      editedTranscript: '',
       setEditedTranscript: (val) => set({ editedTranscript: val }),
-      editedVisualSummary: DEFAULT_PARSED_VIDEO.visualSummary,
+      editedVisualSummary: '',
       setEditedVisualSummary: (val) => set({ editedVisualSummary: val }),
       resetEditedToOriginal: () => {
         const orig = get().parsedVideo;
@@ -189,7 +167,7 @@ export const useAppStore = create<AppState>()(
       setIsGeneratingScript: (loading) => set({ isGeneratingScript: loading }),
       generateError: null,
       setGenerateError: (err) => set({ generateError: err }),
-      streamingScriptText: INITIAL_SAMPLE_SCRIPT,
+      streamingScriptText: '',
       setStreamingScriptText: (text) => set({ streamingScriptText: text }),
       appendStreamingChunk: (chunk) =>
         set((state) => {
@@ -200,26 +178,16 @@ export const useAppStore = create<AppState>()(
           };
         }),
 
-      parsedScript: parseGeneratedScript(INITIAL_SAMPLE_SCRIPT),
+      parsedScript: parseGeneratedScript(''),
       syncParsedScriptFromText: (rawText) =>
         set({
           streamingScriptText: rawText,
           parsedScript: parseGeneratedScript(rawText),
         }),
 
-      conversationMessages: [
-        { role: 'assistant', content: INITIAL_SAMPLE_SCRIPT },
-      ],
+      conversationMessages: [],
       setConversationMessages: (msgs) => set({ conversationMessages: msgs }),
-      refinementHistory: [
-        {
-          id: 'init_v1',
-          round: 1,
-          instruction: '初始结合本公司业务与知识库生成版本',
-          timestamp: new Date().toISOString(),
-          scriptSnapshot: INITIAL_SAMPLE_SCRIPT,
-        },
-      ],
+      refinementHistory: [],
       addRefinementVersion: (instruction, scriptSnapshot) =>
         set((state) => {
           const nextRound = state.refinementHistory.length + 1;
@@ -337,7 +305,7 @@ export const useAppStore = create<AppState>()(
             platform: record.platform,
             extractedUrl: record.sourceUrl,
             title: record.title,
-            author: 'SQLite 历史记录回填',
+            author: '历史记录恢复',
             durationSec: record.durationSec,
             transcript: record.originalTranscript,
             visualSummary: record.visualSummary,
@@ -403,7 +371,7 @@ export const useAppStore = create<AppState>()(
         llmModel: '',
         videoParserApiKey: '',
         videoParserEndpoint: '',
-        enableMockFallback: true,
+        enableMockFallback: false,
       },
       updateSettings: (partial) =>
         set((state) => ({
@@ -420,6 +388,7 @@ export const useAppStore = create<AppState>()(
         if (state && !error) queueMicrotask(() => state.updateSettings({ llmApiKey: '', videoParserApiKey: '' }));
       },
       partialize: (state) => ({
+        sidebarCollapsed: state.sidebarCollapsed,
         linkInput: state.linkInput,
         parsedVideo: state.parsedVideo,
         editedTranscript: state.editedTranscript,

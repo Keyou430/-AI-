@@ -83,11 +83,11 @@ export function parseLinkDigestResponse(payload: unknown, platform: VideoPlatfor
 function httpFailure(status: number): VideoParseResponse {
   const messages: Record<number, string> = {
     400: 'LinkDigest 不接受此链接，请复制平台分享的完整链接。',
-    401: 'LinkDigest API Key 无效或已撤销，请在设置中更新。',
+    401: 'LinkDigest 接口密钥 无效或已撤销，请在设置中更新。',
     402: 'LinkDigest 余额不足或本次内容超过积分上限，请检查额度及设置中的单次积分上限。',
     403: 'LinkDigest 账号或接口权限不足，请检查厂商账户。',
     422: 'LinkDigest 无法读取此链接，作品可能已删除、需要登录或被平台阻止；小红书请保留分享链接参数。',
-    429: 'LinkDigest 请求过于频繁或此 Key 已达月度上限，请稍后检查；程序未自动重试。',
+    429: 'LinkDigest 请求过于频繁或此密钥 已达月度上限，请稍后检查；程序未自动重试。',
     503: '平台暂时拒绝 LinkDigest 自动读取。请改用厂商的本地文件上传或浏览器扩展；本程序不会绕过限制。',
   };
   return { success: false, errorCode: [402, 429].includes(status) ? 'QUOTA_EXHAUSTED' : 'API_ERROR',
@@ -97,7 +97,7 @@ function httpFailure(status: number): VideoParseResponse {
 export async function readLinkDigest(input: { url: string; platform: VideoPlatform; apiKey: string; maxCredits?: number },
   onError?: (error: unknown) => void, signal?: AbortSignal): Promise<VideoParseResponse> {
   signal?.throwIfAborted();
-  if (!input.apiKey) return { success: false, errorCode: 'API_ERROR', errorMessage: '请先在设置中保存 LinkDigest API Key。' };
+  if (!input.apiKey) return { success: false, errorCode: 'API_ERROR', errorMessage: '请先在设置中保存 LinkDigest 接口密钥。' };
   const maxCredits = input.maxCredits ?? 5;
   if (!Number.isInteger(maxCredits) || maxCredits < 1 || maxCredits > 1000) {
     return { success: false, errorCode: 'API_ERROR', errorMessage: 'LinkDigest 单次积分上限须为 1 至 1000 的整数。' };

@@ -156,3 +156,19 @@ test('LinkDigest Key 与积分上限加密长存，切换厂商要新 Key，新�
     assert.deepEqual(new LocalProviderService(path.join(directory,'fresh'),storage).publicSettings(),empty);
   }finally{await fs.rm(directory,{recursive:true,force:true});}
 });
+
+
+test('接口地址校验指出具体字段，失败不覆盖已保存配置或泄露密钥', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'remix-config-error-'));
+  try {
+    const service = new LocalProviderService(directory, storage); service.save(config);
+    for (const [field, label] of [['llmBaseUrl', '模型接口地址'], ['videoParserEndpoint', '内容提取接口地址']] as const) {
+      assert.throws(() => service.save({ ...config, [field]: 'http://invalid.example/?key=private-secret' }), error => {
+        assert.ok(error instanceof Error); assert.ok(error.message.includes(label)); assert.ok(error.message.includes('HTTPS'));
+        assert.ok(!error.message.includes('private-secret')); return true;
+      });
+      assert.equal(service.read().llmApiKey, config.llmApiKey);
+      assert.equal(service.read().llmBaseUrl, config.llmBaseUrl);
+    }
+  } finally { await fs.rm(directory, { recursive: true, force: true }); }
+});

@@ -20,12 +20,12 @@ const authMessages: Record<string, string> = {
   INVALID_PASSWORD: '密码长度须为 8 至 128 位', USERNAME_EXISTS: '账号已存在',
   INVALID_USER: '账号或姓名格式无效', INVALID_ROLE: '角色无效',
   INVALID_STATUS: '账号状态无效', USER_NOT_FOUND: '账号不存在',
-  PROTECTED_ACCOUNT: '不能停用内置管理员或当前账号', RATE_LIMITED: '登录尝试过于频繁，请稍后再试',
+  PROTECTED_ACCOUNT: '不能停用或删除内置管理员及当前登录账号', RATE_LIMITED: '登录尝试过于频繁，请稍后再试',
 };
 
 // 员工版只使用服务端账号；凭据和令牌均不写入本地数据库。
 export class RemoteAuthService implements Pick<AuthService,
-  'status' | 'setup' | 'login' | 'requireUser' | 'listUsers' | 'createUser' | 'setActive' | 'resetPassword'> {
+  'status' | 'setup' | 'login' | 'requireUser' | 'listUsers' | 'createUser' | 'setActive' | 'resetPassword' | 'deleteUser'> {
   private readonly sessions = new Map<number, { token: string; generation: number; controller: AbortController }>();
   private readonly generations = new Map<number, number>();
   private readonly baseUrl: string;
@@ -40,6 +40,9 @@ export class RemoteAuthService implements Pick<AuthService,
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
         body: input === undefined ? undefined : JSON.stringify(input), signal: AbortSignal.timeout(this.timeoutMs),
       });
+      if (route === 'users/delete' && response.status === 404) {
+        throw new AuthError('SERVICE_UPDATE_REQUIRED', '授权服务尚未支持删除账号，请联系管理员更新服务后重试');
+      }
       const data = await response.json();
       if (!response.ok || !data.success) {
         const code = typeof data.errorCode === 'string' && authMessages[data.errorCode] ? data.errorCode : 'AUTH_UNAVAILABLE';
@@ -151,6 +154,9 @@ export class RemoteAuthService implements Pick<AuthService,
       }
       throw error;
     } finally { watch.stop(); }
+  }
+  async deleteUser(senderId: number, userId: string): Promise<void> {
+    await this.authorized(senderId, 'users/delete', { userId });
   }
   async resetPassword(senderId: number, userId: string, password: string): Promise<void> {
     await this.authorized(senderId, 'users/password', { userId, password });

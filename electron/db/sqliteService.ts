@@ -195,7 +195,7 @@ function buildSimpleParsedStructure(rawText: string, totalDurationSec: number) {
 }
 
 export class LocalSQLiteManager {
-  constructor(private readonly dataDirectory: string, private readonly onEngineFallback?: (error: unknown) => void, private readonly seedDemoData = true) {}
+  constructor(private readonly dataDirectory: string, private readonly onEngineFallback?: (error: unknown) => void, private readonly seedDemoData = false) {}
   private dbPath: string = '';
   private engine: 'better-sqlite3' | 'sqlite3-wasm' = 'sqlite3-wasm';
   private nativeDb: any = null;
@@ -262,11 +262,33 @@ export class LocalSQLiteManager {
       this.flushWasmToDisk();
     }
 
-    // 已存在的空表可能是用户主动清空的，仅首次创建数据库时写入示例。
+    if (!this.seedDemoData) this.removeUntouchedDemoRecord();
+    // 仅显式启用测试示例时写入，新设备默认保持空库。
     if (isNewDatabase && this.seedDemoData) {
       await this.seedInitialHistory();
       // 新设备知识库留空；已有数据库中的文档继续保留。
     }
+  }
+
+  private removeUntouchedDemoRecord(): void {
+    const id = 'sqlite_seed_douyin_1';
+    const query = 'SELECT * FROM history_records WHERE id = ?';
+    let row: Record<string, unknown> | undefined;
+    if (this.nativeDb) row = this.nativeDb.prepare(query).get(id);
+    else {
+      const statement = this.wasmDb.prepare(query);
+      try { statement.bind([id]); if (statement.step()) row = statement.getAsObject(); }
+      finally { statement.free(); }
+    }
+    if (!row) return;
+    const normalize = (record: DBHistoryRecord) => ({
+      ...record, createdAt: '',
+      refinementHistory: record.refinementHistory.map(version => ({ ...version, timestamp: '' })),
+    });
+    // 只移除完全未编辑的内置示例，用户修改过的记录继续保留。
+    if (JSON.stringify(normalize(this.mapRowToRecord(row))) !== JSON.stringify(normalize(this.createInitialHistoryRecord()))) return;
+    if (this.nativeDb) this.nativeDb.prepare('DELETE FROM history_records WHERE id = ?').run(id);
+    else { this.wasmDb.run('DELETE FROM history_records WHERE id = ?', [id]); this.flushWasmToDisk(); }
   }
 
   private flushWasmToDisk(): void {
@@ -292,6 +314,10 @@ export class LocalSQLiteManager {
   }
 
   private async seedInitialHistory(): Promise<void> {
+    this.writeRecord(this.createInitialHistoryRecord());
+  }
+
+  private createInitialHistoryRecord(): DBHistoryRecord {
     const now = Date.now();
     const initialRecord: DBHistoryRecord = {
       id: 'sqlite_seed_douyin_1',
@@ -324,7 +350,7 @@ export class LocalSQLiteManager {
       ],
     };
 
-    this.writeRecord(initialRecord);
+    return initialRecord;
   }
 
   private async seedInitialKnowledgeDocs(): Promise<void> {
@@ -630,6 +656,14 @@ export class LocalSQLiteManager {
       return statement.step() ? statement.getAsObject() as unknown as DBUser : undefined;
     } finally {
       statement.free();
+    }
+  }
+
+  public deleteUser(userId: string): void {
+    if (this.nativeDb) this.nativeDb.prepare('DELETE FROM users WHERE id = ?').run(userId);
+    else {
+      this.wasmDb.run('DELETE FROM users WHERE id = ?', [userId]);
+      this.flushWasmToDisk();
     }
   }
 

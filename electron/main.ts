@@ -1,5 +1,7 @@
+import { StorageLocationService } from './services/storageLocation';
+import { userFacingError } from './services/userFacingError';
 import { LocalProviderService } from './services/localProviderService';
-import { app, BrowserWindow, ipcMain, dialog, shell, safeStorage } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, safeStorage, Menu } from 'electron';
 import { AuthError } from './services/authError';
 import { createDesktopAuth } from './services/desktopAuth';
 import { RemoteAuthService } from './services/remoteAuthService';
@@ -39,10 +41,9 @@ app.on('child-process-gone', (_event, details) => {
   });
 });
 
-const sqliteService = new LocalSQLiteManager(app.getPath('userData'), (error) => {
-  runtimeLogger.write('warn', 'database.engine-fallback', { error, engine: 'sqlite3-wasm' });
-});
-const authService = createDesktopAuth(sqliteService, path.join(__dirname, '..'), __dirname, app.getPath('userData'));
+let storageLocation: StorageLocationService;
+let sqliteService: LocalSQLiteManager;
+let authService: ReturnType<typeof createDesktopAuth>;
 const localProviders = new LocalProviderService(app.getPath('userData'), safeStorage);
 
 const activeTasks = new Map<number, Set<AbortController>>();
@@ -79,9 +80,9 @@ function handle(channel: string, listener: (event: IpcMainInvokeEvent, payload: 
         errorCode: outcome === 'failed' ? result?.errorCode || 'OPERATION_FAILED' : undefined,
       });
       return result;
-    } catch (error: any) {
+    } catch (error: unknown) {
       const code = error instanceof AuthError ? error.code : 'INTERNAL_ERROR';
-      const message = error?.message || '操作失败';
+      const message = userFacingError(error, '操作失败，请重试或查看运行日志。');
       runtimeLogger.write(error instanceof AuthError ? 'warn' : 'error', 'operation.failed', {
         ...context, outcome: 'failed', errorCode: code, error,
         durationMs: Math.round(performance.now() - started),
@@ -101,9 +102,9 @@ function createWindow() {
     show: false,
     width: 1460,
     height: 940,
-    minWidth: 1200,
-    minHeight: 780,
-    title: '视频二创AI助手',
+    minWidth: 360,
+    minHeight: 600,
+    title: '视频二创助手',
     backgroundColor: '#f8fafc',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -152,6 +153,18 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  if (app.isPackaged || process.env.NODE_ENV !== 'development') Menu.setApplicationMenu(null);
+  if (!app.requestSingleInstanceLock()) { app.quit(); return; }
+  app.on('second-instance', () => {
+    if (mainWindow?.isMinimized()) mainWindow.restore();
+    mainWindow?.show();
+    mainWindow?.focus();
+  });
+  storageLocation = new StorageLocationService(app.getPath('userData'));
+  sqliteService = new LocalSQLiteManager(storageLocation.activatePending(), (error) => {
+    runtimeLogger.write('warn', 'database.engine-fallback', { error, engine: 'sqlite3-wasm' });
+  });
+  authService = createDesktopAuth(sqliteService, path.join(__dirname, '..'), __dirname, app.getPath('userData'));
   await sqliteService.ensureInitialized();
   const database = await sqliteService.getDatabaseInfo();
   runtimeLogger.write('info', 'database.ready', { engine: database.engine });
@@ -206,9 +219,9 @@ handle('llm:generate-stream', async (event, payload: LLMGenerateRequest, operati
     signal.throwIfAborted();
     if (!sender.isDestroyed()) sender.send('llm:stream-done', { requestId: payload.requestId, fullText });
     return { success: true, fullText };
-  } catch (err: any) {
+  } catch (err: unknown) {
     runtimeLogger.write('error', 'service.llm-generation-failed', { operationId, error: err });
-    const errorMessage = signal.aborted ? '任务已取消' : err?.message || '调用大模型生成二创脚本失败';
+    const errorMessage = signal.aborted ? '任务已取消' : userFacingError(err, '生成脚本失败，请重试或检查模型接口配置。');
     if (!signal.aborted && !sender.isDestroyed()) sender.send('llm:stream-error', { requestId: payload.requestId, error: errorMessage });
     if (err instanceof AuthError) throw err;
     return { success: false, error: errorMessage };
@@ -231,6 +244,18 @@ handle('db:history:save', async (_event, record: DBHistoryRecord) => {
 handle('db:history:delete', async (_event, id: string) => {
   const ok = await sqliteService.deleteRecord(id);
   return { success: ok };
+});
+
+handle('storage:get', () => ({ success: true, location: storageLocation.get() }));
+handle('storage:choose', async () => {
+  if (!mainWindow) return { success: false, error: '窗口尚未就绪' };
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: '选择历史记录与公司知识库的存储地址',
+    defaultPath: storageLocation.get().pendingDirectory || storageLocation.get().directory,
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  if (result.canceled || !result.filePaths[0]) return { success: true, canceled: true };
+  return { success: true, location: storageLocation.schedule(result.filePaths[0]) };
 });
 
 handle('db:history:info', async () => {
@@ -258,11 +283,11 @@ handle('kb:list', async () => {
 handle('kb:select-and-parse-files', async () => {
   if (!mainWindow) return { success: false, docs: [] };
   const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
-    title: '选择本地企业知识库文件 (.pdf, .docx, .txt, .md)',
+    title: '选择知识库文档',
     properties: ['openFile', 'multiSelections'],
     filters: [
       {
-        name: '知识库文档 (.pdf, .docx, .txt, .md, .csv)',
+        name: '知识库文档（PDF、Word、文本、表格）',
         extensions: ['pdf', 'docx', 'txt', 'md', 'csv', 'json'],
       },
     ],
@@ -345,7 +370,7 @@ handle(
     }
     const filters =
       payload.format === 'doc'
-        ? [{ name: 'Word 文档 (.doc)', extensions: ['doc'] }]
+        ? [{ name: '文档（.doc）', extensions: ['doc'] }]
         : [{ name: '纯文本文件 (.txt)', extensions: ['txt'] }];
 
     const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
@@ -378,6 +403,9 @@ handle('auth:create-user', async (event, input) => ({ success: true, user: await
 handle('auth:set-active', async (event, input) => {
   await authService.setActive(event.sender.id, input.userId, input.active); return { success: true };
 }, { admin: true });
+handle('auth:delete-user', async (event, input) => {
+  await authService.deleteUser(event.sender.id, input.userId); return { success: true };
+}, { admin: true });
 handle('auth:reset-password', async (event, input) => {
   await authService.resetPassword(event.sender.id, input.userId, input.password); return { success: true };
 }, { admin: true });
@@ -395,7 +423,7 @@ handle('runtime:report-error', (_event, payload) => {
   return { success: true };
 }, { public: true });
 app.on('before-quit', () => {
-  try { sqliteService.close(); }
+  try { sqliteService?.close(); }
   catch (error) { runtimeLogger.write('error', 'database.close-failed', { error }); }
   runtimeLogger.write('info', 'app.stopping');
 });

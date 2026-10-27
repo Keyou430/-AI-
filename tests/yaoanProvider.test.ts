@@ -66,7 +66,7 @@ test('鉴权、余额和限流失败不自动重试、不回显供应商错误�
       const result = await parseShortVideoLink({rawInput:'https://v.douyin.com/demo/', apiProvider:'yaoan', apiKey:'fixture-secret', enableMockFallback:false});
       assert.equal(result.success, false); assert.equal(count, 1); assert.equal(JSON.stringify(result).includes('fixture-secret'), false);
       assert.equal(result.isMockData, undefined);
-      assert.match(result.errorMessage!, status === 401 ? /Key/ : status === 403 ? /余额/ : status === 429 ? /限流/ : /500/);
+      assert.match(result.errorMessage!, status === 401 ? /接口密钥/ : status === 403 ? /余额/ : status === 429 ? /限流/ : /500/);
     }
   } finally { globalThis.fetch = original; }
 });

@@ -1,28 +1,24 @@
-import { cn } from '../lib/utils';
-import React, { useState } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Tabs } from '@base-ui/react/tabs';
+import { Eye, FolderOpen, LoaderCircle, Plus, Trash2, Upload, X } from 'lucide-react';
+import { StorageSettings } from '../components/StorageSettings';
 import { ProviderSettingsForm } from '../components/ProviderSettingsForm';
-import {
-  KeyRound,
-  BookOpen,
-  Tags,
-  Upload,
-  Trash2,
-  Plus,
-  Briefcase,
-  FolderSearch,
-  Eye,
-  X,
-} from 'lucide-react';
+import { Button } from '../components/ui/Button';
+import { Modal } from '../components/ui/Modal';
+import { notifyError } from '../components/ui/Toast';
 import { useAppStore } from '../store/useAppStore';
 import {
   selectNativeKnowledgeFilesClient,
   uploadAndParseKnowledgeFileClient,
 } from '../services/ipcClient';
-import { KeywordTag, KnowledgeDocument } from '../types';
+import type { KeywordTag, KnowledgeDocument } from '../types';
+import { cn } from '../lib/utils';
 
-export const SettingsView: React.FC = () => {
+export function SettingsView() {
   const {
     settings,
+    settingsTab,
+    setSettingsTab,
     updateSettings,
     knowledgeDocs,
     loadKnowledgeDocsFromSQLite,
@@ -32,341 +28,322 @@ export const SettingsView: React.FC = () => {
     addKeyword,
     removeKeyword,
   } = useAppStore();
-
   const [newKeyword, setNewKeyword] = useState('');
-  const [logFolderError, setLogFolderError] = useState<string | null>(null);
-  const [keywordCategory, setKeywordCategory] =
-    useState<KeywordTag['category']>('brand');
+  const [category, setCategory] = useState<KeywordTag['category']>('brand');
   const [parsingFiles, setParsingFiles] = useState(false);
+  const [fileError, updateFileError] = useState('');
+  const setFileError = (message: string) => { updateFileError(message); if (message) notifyError(message, '知识库导入未完成'); };
+  const [dragging, setDragging] = useState(false);
+  const [logError, updateLogError] = useState('');
+  const setLogError = (message: string) => { updateLogError(message); if (message) notifyError(message, '日志目录未打开'); };
   const [previewDoc, setPreviewDoc] = useState<KnowledgeDocument | null>(null);
-
-
-  // Phase 3: 使用 Electron 原生文件选择器直接调用主进程 pdf-parse / mammoth 解析本地文件
-  const handleNativeDialogSelect = async () => {
-    if (window.electronAPI?.selectAndParseKnowledgeFiles) {
-      setParsingFiles(true);
-      try {
-        await selectNativeKnowledgeFilesClient();
-        await loadKnowledgeDocsFromSQLite();
-      } finally {
-        setParsingFiles(false);
-      }
-    }
-  };
-
-  // 支持拖拽或普通 input[type=file] 上传并通过主进程解析 Buffer
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
+  const fileInput = useRef<HTMLInputElement>(null);
+  const scroll = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (scroll.current) scroll.current.scrollTop = 0;
+  }, [settingsTab]);
+  const importFiles = async (files?: File[]) => {
+    if (parsingFiles) return;
     setParsingFiles(true);
+    setFileError('');
     try {
-      for (const file of Array.from(files)) {
-        await uploadAndParseKnowledgeFileClient(file);
-      }
+      if (files) {
+        for (const file of files) await uploadAndParseKnowledgeFileClient(file);
+      } else if (window.electronAPI?.selectAndParseKnowledgeFiles)
+        await selectNativeKnowledgeFilesClient();
       await loadKnowledgeDocsFromSQLite();
+    } catch (error) {
+      setFileError(error instanceof Error ? error.message : '文档导入失败，请检查格式后重试。');
     } finally {
       setParsingFiles(false);
-      e.target.value = '';
+      if (fileInput.current) fileInput.current.value = '';
     }
   };
-
-  const handleAddKeyword = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newKeyword.trim()) return;
-    addKeyword(newKeyword, keywordCategory);
-    setNewKeyword('');
+  const add = (event: FormEvent) => {
+    event.preventDefault();
+    if (newKeyword.trim()) {
+      addKeyword(newKeyword.trim(), category);
+      setNewKeyword('');
+    }
   };
-
   return (
-    <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
-      <div className="max-w-4xl mx-auto space-y-6">
-        <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-3">
-          <h2 className="text-sm font-bold text-slate-900">运行日志</h2>
-          <p className="text-xs text-slate-500">记录启动、退出和关键操作结果，用于排查运行问题。</p>
-          <button
-            type="button"
-            disabled={!window.electronAPI}
-            onClick={async () => {
-              setLogFolderError(null);
-              try {
-                const result = await window.electronAPI?.openLogFolder();
-                if (!result?.success) throw new Error(result?.error || '请使用桌面客户端打开运行日志');
-              } catch (error) {
-                setLogFolderError(error instanceof Error ? error.message : '打开运行日志失败');
-              }
-            }}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-          >
-            <FolderSearch className="w-4 h-4" />
-            打开运行日志
-          </button>
-          {logFolderError && <p role="alert" className="text-xs text-red-600">{logFolderError}</p>}
-        </section>
-        {/* 1. 本公司主营业务与关键词配置 (PRD V1.1 核心升级) */}
-        <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-5">
-          <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
-            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
-              <Briefcase className="w-4 h-4" />
-            </div>
-            <div>
-              <h2 className="text-sm font-bold text-slate-900">
-                本公司主营业务与关键词配置（热点视频跨界融合锚点）
-              </h2>
-              <p className="text-xs text-slate-500">
-                当输入当下热点视频时，AI 将提取原片爆款钩子并自动嫁接至下方配置的本公司主营业务与产品词上
-              </p>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-              本公司主营业务与核心场景概述
-            </label>
-            <textarea
-              rows={2}
-              value={settings.companyBusinessProfile}
-              onChange={(e) =>
-                updateSettings({ companyBusinessProfile: e.target.value })
-              }
-              placeholder="例如：主营精品零脂冷萃冻干咖啡与办公室便携冲调饮品，主打3秒冷水即溶、零蔗糖轻负担与早八高效提神场景..."
-              className="w-full rounded-xl border border-slate-200 px-3.5 py-2 text-xs bg-slate-50 focus:bg-white focus:outline-none focus:border-indigo-500 leading-relaxed"
-            />
-          </div>
-
-          <div className="space-y-3 pt-1">
-            <div className="flex items-center gap-2">
-              <Tags className="w-4 h-4 text-indigo-600" />
-              <span className="text-xs font-bold text-slate-800">
-                分类业务关键词管理
-              </span>
-            </div>
-
-            <form onSubmit={handleAddKeyword} className="flex items-center gap-2.5">
-              <select
-                value={keywordCategory}
-                onChange={(e) => setKeywordCategory(e.target.value as any)}
-                className="rounded-xl border border-slate-200 px-3 py-2 text-xs bg-slate-50"
-              >
-                <option value="brand">核心业务/产品词（必提）</option>
-                <option value="jargon">客群痛点与转化卖点词</option>
-                <option value="forbidden">严禁违禁词</option>
-              </select>
-
-              <input
-                type="text"
-                value={newKeyword}
-                onChange={(e) => setNewKeyword(e.target.value)}
-                placeholder="输入业务关键词回车添加..."
-                className="flex-1 rounded-xl border border-slate-200 px-3.5 py-2 text-xs bg-slate-50 focus:bg-white focus:outline-none focus:border-indigo-500"
-              />
-
-              <button
-                type="submit"
-                className="inline-flex items-center gap-1 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                添加标签
-              </button>
-            </form>
-
-            <div className="flex flex-wrap gap-2 pt-1">
-              {keywords.map((kw) => (
-                <span
-                  key={kw.id}
-                  className={cn(
-                    'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border',
-                    kw.category === 'brand' &&
-                      'bg-indigo-50 text-indigo-700 border-indigo-200',
-                    kw.category === 'jargon' &&
-                      'bg-emerald-50 text-emerald-700 border-emerald-200',
-                    kw.category === 'forbidden' &&
-                      'bg-rose-50 text-rose-700 border-rose-200'
-                  )}
-                >
-                  <span>
-                    [
-                    {kw.category === 'brand'
-                      ? '业务/产品词'
-                      : kw.category === 'jargon'
-                      ? '转化卖点'
-                      : '违禁词'}
-                    ] {kw.text}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => removeKeyword(kw.id)}
-                    className="hover:opacity-75"
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* 2. Phase 3 本地企业知识库配置（支持 .pdf, .docx, .txt, .md 全文解析与 Prompt 注入） */}
-        <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
-                <BookOpen className="w-4 h-4" />
+    <Tabs.Root
+      value={settingsTab}
+      onValueChange={(value) => {
+        if (value === 'content' || value === 'system') setSettingsTab(value);
+      }}
+      className="flex min-h-0 flex-1 flex-col bg-background"
+    >
+      <header className="shrink-0 border-b px-4 pt-4 md:px-6 md:pt-6 lg:px-8 lg:pt-8">
+        <div className="mx-auto max-w-3xl">
+          <h1 className="text-xl font-semibold tracking-tight">设置</h1>
+          <p className="mt-1 text-sm text-muted-foreground">管理内容背景、接口密钥和本设备存储。</p>
+          <Tabs.List aria-label="设置分类" className="tab-list mt-5 pb-3">
+            <Tabs.Tab value="content" className="tab min-h-11">
+              内容设置
+            </Tabs.Tab>
+            <Tabs.Tab value="system" className="tab min-h-11">
+              系统设置
+            </Tabs.Tab>
+          </Tabs.List>
+        </div>
+      </header>
+      <div ref={scroll} className="settings-page min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-3xl">
+          <Tabs.Panel value="content" keepMounted className="space-y-5">
+            <section className="surface space-y-5 p-5 sm:p-6" aria-labelledby="business-title">
+              <div>
+                <h2 id="business-title" className="section-title">
+                  业务与关键词
+                </h2>
+                <p className="muted-copy mt-1">生成时会结合这里填写的业务背景。</p>
               </div>
               <div>
-                <h2 className="text-sm font-bold text-slate-900">
-                  本地企业知识库文件读取与 Prompt 注入 (Phase 3)
-                </h2>
-                <p className="text-xs text-slate-500">
-                  通过 Node.js 本地解析 .pdf (pdf-parse)、.docx (mammoth)、.txt、.md 全文并存入 SQLite，生成脚本时自动拼接注入
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {typeof window !== 'undefined' &&
-                Boolean(window.electronAPI?.selectAndParseKnowledgeFiles) && (
-                  <button
-                    type="button"
-                    onClick={handleNativeDialogSelect}
-                    disabled={parsingFiles}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-                  >
-                    <FolderSearch className="w-3.5 h-3.5" />
-                    选择本地文件解析
-                  </button>
-                )}
-
-              <label className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 cursor-pointer transition-colors">
-                <Upload className="w-3.5 h-3.5" />
-                {parsingFiles ? '正在解析文档...' : '上传本地文档 (.pdf/.docx/.txt)'}
-                <input
-                  type="file"
-                  multiple
-                  accept=".txt,.md,.pdf,.docx,.csv,.json"
-                  onChange={handleFileUpload}
-                  className="hidden"
+                <label htmlFor="business-profile" className="field-label">
+                  主营业务
+                </label>
+                <textarea
+                  id="business-profile"
+                  rows={3}
+                  value={settings.companyBusinessProfile}
+                  onChange={(event) => updateSettings({ companyBusinessProfile: event.target.value })}
+                  placeholder="介绍你的产品、服务与目标受众。"
+                  className="field resize-y"
                 />
-              </label>
-            </div>
-          </div>
-
-          <div className="space-y-2.5">
-            {knowledgeDocs.map((doc) => (
+              </div>
+              <form onSubmit={add} className="flex flex-wrap gap-2">
+                <label className="sr-only" htmlFor="keyword-category">
+                  关键词分类
+                </label>
+                <select
+                  id="keyword-category"
+                  value={category}
+                  onChange={(event) => setCategory(event.target.value as KeywordTag['category'])}
+                  className="field w-auto"
+                >
+                  <option value="brand">业务 / 产品</option>
+                  <option value="jargon">卖点</option>
+                  <option value="forbidden">禁用词</option>
+                </select>
+                <label htmlFor="new-keyword" className="sr-only">
+                  业务关键词
+                </label>
+                <input
+                  id="new-keyword"
+                  value={newKeyword}
+                  onChange={(event) => setNewKeyword(event.target.value)}
+                  placeholder="输入关键词"
+                  className="field min-w-[120px] flex-1"
+                />
+                <Button type="submit" size="sm" disabled={!newKeyword.trim()} aria-label="添加关键词">
+                  <Plus />
+                  <span className="hidden sm:inline">添加</span>
+                </Button>
+              </form>
+              {keywords.length ? (
+                <div className="flex flex-wrap gap-2">
+                  {keywords.map((keyword) => (
+                    <span
+                      key={keyword.id}
+                      className={cn(
+                        'inline-flex items-center gap-1 rounded-md bg-muted pl-2.5 text-xs',
+                        keyword.category === 'forbidden' && 'text-destructive'
+                      )}
+                    >
+                      <span className="text-muted-foreground">
+                        {keyword.category === 'brand'
+                          ? '产品'
+                          : keyword.category === 'jargon'
+                            ? '卖点'
+                            : '禁用'}
+                      </span>
+                      {keyword.text}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-9 px-2"
+                        onClick={() => removeKeyword(keyword.id)}
+                        aria-label={'移除关键词 ' + keyword.text}
+                      >
+                        <X />
+                      </Button>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="muted-copy">尚未添加关键词。</p>
+              )}
+            </section>
+            <section className="surface space-y-4 p-5 sm:p-6" aria-labelledby="knowledge-title">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 id="knowledge-title" className="section-title">
+                    公司知识库
+                  </h2>
+                  <p className="muted-copy mt-1">启用的文档会作为脚本生成的参考。</p>
+                </div>
+                <Button
+                  size="sm"
+                  disabled={parsingFiles}
+                  onClick={() => {
+                    if (window.electronAPI?.selectAndParseKnowledgeFiles) void importFiles();
+                    else fileInput.current?.click();
+                  }}
+                >
+                  {parsingFiles ? <LoaderCircle className="animate-spin" /> : <Upload />}
+                  {parsingFiles ? '正在导入' : '导入文档'}
+                </Button>
+              </div>
+              <input
+                ref={fileInput}
+                type="file"
+                multiple
+                accept=".txt,.md,.pdf,.docx,.csv,.json"
+                className="hidden"
+                aria-label="选择知识库文档"
+                onChange={(event) => {
+                  if (event.target.files?.length) void importFiles(Array.from(event.target.files));
+                }}
+              />
               <div
-                key={doc.id}
-                className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 flex items-start justify-between gap-4"
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  if (!parsingFiles) setDragging(true);
+                }}
+                onDragLeave={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+                    setDragging(false);
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setDragging(false);
+                  if (event.dataTransfer.files.length)
+                    void importFiles(Array.from(event.dataTransfer.files));
+                }}
+                className={cn(
+                  'rounded-md border border-dashed px-4 py-5 text-center text-xs text-muted-foreground',
+                  dragging && 'border-primary bg-accent'
+                )}
               >
-                <div className="space-y-1 flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
+                <p>{dragging ? '松开以导入文档' : '将文档拖入这里'}</p>
+                <p className="mt-1 text-[11px]">PDF、Word、TXT、Markdown、CSV、JSON</p>
+              </div>
+              {fileError && (
+                <p role="alert" className="text-xs text-destructive">
+                  {fileError}
+                </p>
+              )}
+              <div className="divide-y">
+                {knowledgeDocs.map((doc) => (
+                  <div key={doc.id} className="flex items-start gap-3 py-4">
                     <input
                       type="checkbox"
                       checked={doc.enabled}
-                      onChange={() => toggleKnowledgeDoc(doc.id)}
-                      className="rounded border-slate-300 text-indigo-600"
+                      onChange={() => {
+                        void toggleKnowledgeDoc(doc.id);
+                      }}
+                      aria-label={'启用文档 ' + doc.name}
+                      className="mt-1 h-4 w-4 accent-primary"
                     />
-                    <span className="text-xs font-bold text-slate-800 truncate">
-                      {doc.name}
-                    </span>
-                    <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 font-medium">
-                      已提取 {doc.charCount || doc.fullContent?.length || 0} 字
-                    </span>
-                    <span className="text-[11px] text-slate-400">
-                      ({(doc.sizeBytes / 1024).toFixed(1)} KB)
-                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium" title={doc.name}>
+                        {doc.name}
+                      </p>
+                      <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                        {doc.contentSnippet}
+                      </p>
+                      <p className="mt-1 text-[11px] tabular-nums text-muted-foreground">
+                        {(doc.charCount || doc.fullContent.length).toLocaleString()} 字 ·{' '}
+                        {(doc.sizeBytes / 1024).toFixed(1)} KB
+                      </p>
+                    </div>
+                    <div className="flex">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={'预览 ' + doc.name}
+                        onClick={() => setPreviewDoc(doc)}
+                      >
+                        <Eye />
+                      </Button>
+                      <Button
+                        variant="danger"
+                        size="icon"
+                        aria-label={'删除 ' + doc.name}
+                        onClick={() => {
+                          void removeKnowledgeDoc(doc.id);
+                        }}
+                      >
+                        <Trash2 />
+                      </Button>
+                    </div>
                   </div>
-                  <p className="text-xs text-slate-600 pl-5 line-clamp-2">
-                    {doc.contentSnippet}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-1 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setPreviewDoc(doc)}
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs text-indigo-600 hover:bg-indigo-50 font-medium"
-                  >
-                    <Eye className="w-3.5 h-3.5" />
-                    查看解析全文
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => removeKnowledgeDoc(doc.id)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </section>
-
-        {/* 3. 本设备模型与内容提取接口配置 */}
-        <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-5">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
-                <KeyRound className="w-4 h-4" />
-              </div>
-              <div>
-                <h2 className="text-sm font-bold text-slate-900">
-                  API 密钥与模型配置
+            </section>
+          </Tabs.Panel>
+          <Tabs.Panel value="system" keepMounted className="space-y-5">
+            <section className="surface space-y-5 p-5 sm:p-6" aria-labelledby="provider-title">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 id="provider-title" className="section-title">
+                  接口密钥与内容提取
                 </h2>
-                <p className="text-xs text-slate-500">
-                  模型可使用 DeepSeek；内容提取可选择聚合预设，也可按厂商文档自定义接口
-                </p>
+                <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-primary"
+                    checked={settings.enableMockFallback}
+                    onChange={(event) => updateSettings({ enableMockFallback: event.target.checked })}
+                  />
+                  启用仿真模式<span className="sr-only">（使用示例数据，不调用真实接口）</span>
+                </label>
               </div>
-            </div>
-
-            <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={settings.enableMockFallback}
-                onChange={(e) =>
-                  updateSettings({ enableMockFallback: e.target.checked })
-                }
-                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-              />
-              启用仿真模式（使用示例数据，不调用真实接口）
-            </label>
-          </div>
-
-          <ProviderSettingsForm />
-
-        </section>
-      </div>
-
-      {/* 知识库文档全文预览弹窗 */}
-      {previewDoc && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] z-50 flex items-center justify-center p-6">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">
-                  本地知识库解析全文预览：{previewDoc.name}
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  文件路径：{previewDoc.filePath} · 共提取{' '}
-                  {previewDoc.charCount || previewDoc.fullContent.length} 字符
-                </p>
+              {settings.enableMockFallback && (
+                <p className="status-note">演示模式使用示例数据。调用真实接口前，请关闭此开关。</p>
+              )}
+              <ProviderSettingsForm />
+            </section>
+            <details className="disclosure bg-card">
+              <summary>诊断与日志</summary>
+              <div className="mt-3 space-y-3 pb-2">
+                <p className="muted-copy">遇到运行问题时，可查看本设备日志。</p>
+                <Button
+                  size="sm"
+                  disabled={!window.electronAPI}
+                  onClick={async () => {
+                    setLogError('');
+                    try {
+                      const result = await window.electronAPI?.openLogFolder();
+                      if (!result?.success) throw new Error(result?.error || '打开日志失败');
+                    } catch (error) {
+                      setLogError(error instanceof Error ? error.message : '打开日志失败');
+                    }
+                  }}
+                >
+                  <FolderOpen />
+                  打开运行日志
+                </Button>
+                {logError && (
+                  <p role="alert" className="text-xs text-destructive">
+                    {logError}
+                  </p>
+                )}
               </div>
-              <button
-                type="button"
-                onClick={() => setPreviewDoc(null)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="p-5 flex-1 overflow-y-auto">
-              <pre className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 whitespace-pre-wrap leading-relaxed font-sans">
-                {previewDoc.fullContent}
-              </pre>
-            </div>
-          </div>
+            </details>
+            <StorageSettings />
+          </Tabs.Panel>
         </div>
-      )}
-    </div>
+      </div>
+      <Modal
+        open={!!previewDoc}
+        onOpenChange={(open) => {
+          if (!open) setPreviewDoc(null);
+        }}
+        title={previewDoc?.name || '文档预览'}
+        description="文档正文，仅在本设备保存。"
+      >
+        <pre className="reading-text font-sans">{previewDoc?.fullContent}</pre>
+      </Modal>
+    </Tabs.Root>
   );
-};
+}

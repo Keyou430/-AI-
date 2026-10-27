@@ -53,7 +53,11 @@ test('历史保存失败时抛出主进程返回的错误', async () => {
 
 function historyRecord(id: string): import('../src/types').HistoryRecord {
   const state = useAppStore.getInitialState();
-  const video = state.parsedVideo!;
+  const video: import('../src/types').ParsedVideoInfo = {
+    platform: 'douyin', extractedUrl: 'https://v.douyin.com/test/', title: id,
+    author: '测试作者', durationSec: 18, transcript: '测试原始口播',
+    visualSummary: '测试画面描述', suggestedCameraWork: '近景',
+  };
   return {id,platform:video.platform,sourceUrl:video.extractedUrl,title:id,
     createdAt:new Date().toISOString(),durationSec:state.targetDurationSec,
     userCameraWork:state.userCameraWork,originalTranscript:video.transcript,

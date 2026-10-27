@@ -27,7 +27,7 @@ test('真实模式未配置时明确失败', async () => {
   const parsed = await parseShortVideoLink({ rawInput: 'https://v.douyin.com/demo/', enableMockFallback: false });
   assert.equal(parsed.success, false);
   await assert.rejects(streamGenerateScript({ requestId: 'missing', config: { apiKey: '', baseURL: '', model: '' },
-    systemPrompt: '', userPrompt: '', targetDurationSec: 18, userCameraWork: '', enableMockFallback: false }, () => {}), /API Key/);
+    systemPrompt: '', userPrompt: '', targetDurationSec: 18, userCameraWork: '', enableMockFallback: false }, () => {}), /接口密钥/);
 });
 
 test('解析接口通过 HTTP 合约接收链接并返回真实字段', async () => {

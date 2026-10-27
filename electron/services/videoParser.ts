@@ -1,3 +1,5 @@
+import { userFacingError } from './userFacingError';
+import { extractUrlAndPlatform } from './videoLink';
 import { setTimeout as delay } from 'node:timers/promises';
 import { readLinkDigest, type LinkDigestDetails } from './linkDigestProvider';
 import { getYaoanVideoPreset, parseYaoanVideoResponse } from './yaoanVideoProvider';
@@ -51,35 +53,7 @@ export const DEFAULT_HARDCODED_VIDEO_API = {
 };
 
 
-export function extractUrlAndPlatform(rawInput: string): {
-  url: string | null;
-  platform: VideoPlatform | null;
-} {
-  if (!rawInput || !rawInput.trim()) {
-    return { url: null, platform: null };
-  }
-
-  const urlRegex = /https?:\/\/[^\s，。！？、；：“”‘’（）《》【】]+/i;
-  const match = rawInput.match(urlRegex);
-  const candidateUrl = match ? match[0] : rawInput.trim();
-
-  if (!/^https?:\/\//i.test(candidateUrl)) {
-    return { url: null, platform: null };
-  }
-
-  let hostname: string;
-  try { hostname = new URL(candidateUrl).hostname.toLowerCase(); }
-  catch { return { url: null, platform: null }; }
-  const matchesDomain = (domain: string) => hostname === domain || hostname.endsWith('.' + domain);
-  if (['douyin.com', 'iesdouyin.com'].some(matchesDomain)) {
-    return { url: candidateUrl, platform: 'douyin' };
-  }
-  if (['xiaohongshu.com', 'xhslink.com', 'xhslink.cn'].some(matchesDomain)) {
-    return { url: candidateUrl, platform: 'xiaohongshu' };
-  }
-
-  return { url: candidateUrl, platform: null };
-}
+export { extractUrlAndPlatform } from './videoLink';
 
 const MOCK_VIDEO_SAMPLES: Record<VideoPlatform, ParsedVideoData> = {
   douyin: {
@@ -136,7 +110,7 @@ export async function parseShortVideoLink(
     return {
       success: false,
       errorCode: 'QUOTA_EXHAUSTED',
-      errorMessage: '第三方视频解析 API 额度已耗尽或密钥失效，请前往【设置页】更换有效的 API Key。',
+      errorMessage: '第三方内容提取接口额度已耗尽或密钥失效，请前往【设置页】更换有效的接口密钥。',
     };
   }
 
@@ -153,7 +127,7 @@ export async function parseShortVideoLink(
     try {
       const options = normalizeVideoParserOptions(preset?.options || req.apiOptions);
       if (!endpoint || (options.authMode !== 'none' && !apiKey)) {
-        return { success: false, errorCode: 'API_ERROR', errorMessage: '请先在系统设置中保存内容提取接口地址及所需 API Key。' };
+        return { success: false, errorCode: 'API_ERROR', errorMessage: '请先在系统设置中保存内容提取接口地址及所需接口密钥。' };
       }
       const requestSignal = AbortSignal.any([AbortSignal.timeout(options.timeoutSeconds * 1000), ...(signal ? [signal] : [])]);
       const requestUrl = new URL(endpoint);
@@ -175,12 +149,12 @@ export async function parseShortVideoLink(
         return {
           success: false,
           errorCode: 'QUOTA_EXHAUSTED',
-          errorMessage: `第三方解析接口返回状态码 ${response.status}：API 调用额度已耗尽或触发限流。`,
+          errorMessage: `第三方解析接口返回状态码 ${response.status}：接口调用额度已耗尽或触发限流。`,
         };
       }
 
       if (!response.ok) {
-        const message = response.status === 401 ? 'API Key 无效或已过期，请在设置页更新'
+        const message = response.status === 401 ? '接口密钥无效或已过期，请在设置页更新'
           : response.status === 403 ? '厂商余额不足或未开通接口权限，请检查厂商账户' : `内容提取服务返回 HTTP ${response.status}`;
         throw Object.assign(new Error(message), { status: response.status });
       }
@@ -219,14 +193,14 @@ export async function parseShortVideoLink(
             rawData.camera_work || '近景俯拍、特写推进、中景平视跟随',
         },
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
       signal?.throwIfAborted();
       onError?.(err);
       if (!req.enableMockFallback) {
         return {
           success: false,
           errorCode: 'API_ERROR',
-          errorMessage: `调用第三方解析接口失败（${err?.message || '网络异常'}）。请检查系统设置中的接口地址、鉴权方式和字段路径。`,
+          errorMessage: userFacingError(err, '调用内容提取接口失败，请检查系统设置中的接口地址、鉴权方式和字段路径。'),
         };
       }
     }

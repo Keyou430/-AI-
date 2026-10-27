@@ -122,7 +122,7 @@ export async function createAuthServer(options: ServerOptions) {
           return;
         }
         const knownRoutes = ['GET /v1/me', 'POST /v1/logout', 'GET /v1/users', 'POST /v1/users/create',
-          'POST /v1/users/status', 'POST /v1/users/password'];
+          'POST /v1/users/status', 'POST /v1/users/password', 'POST /v1/users/delete'];
         if (!knownRoutes.includes(route)) { send(404, { success: false, errorCode: 'NOT_FOUND' }); return; }
         const token = req.headers.authorization?.match(/^Bearer ([a-f0-9]{64})$/)?.[1];
         sessionKey = token ? hash(token) : undefined;
@@ -152,6 +152,9 @@ export async function createAuthServer(options: ServerOptions) {
             await auth.setActive(session.id, input.userId, input.active);
             if (!input.active) revokeUser(input.userId);
             send(200, { success: true });
+          } else if (route === 'POST /v1/users/delete') {
+            await auth.deleteUser(session.id, input.userId);
+            revokeUser(input.userId); send(200, { success: true });
           } else {
             await auth.resetPassword(session.id, input.userId, input.password);
             revokeUser(input.userId); send(200, { success: true });

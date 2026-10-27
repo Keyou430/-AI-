@@ -58,9 +58,9 @@ async function start() {
         const call = (method, payload) => window.webContents.executeJavaScript('window.electronAPI[' + JSON.stringify(method) + '](' + (payload === undefined ? '' : JSON.stringify(payload)) + ')');
         const signIn = async () => {
           await window.webContents.executeJavaScript('document.querySelector("[name=username]").value="desktop_member";document.querySelector("[name=password]").value=' + JSON.stringify(password) + ';document.querySelector("form").requestSubmit();');
-          await waitFor(window, "document.body.innerText.includes('一键提取并二创')");
+          await waitFor(window, "Boolean(document.querySelector('[data-testid=editable-transcript]'))");
         };
-        await waitFor(window, "document.body.innerText.includes('登录视频二创 AI 助手')");
+        await waitFor(window, "document.body.innerText.includes('登录视频二创助手')");
         assert.equal((await call('getAuthStatus')).mode, 'remote');
         assert.equal((await call('setupAdmin', { password, displayName: '非法管理员' })).errorCode, 'FORBIDDEN');
         assert.equal((await call('listHistoryFromDB')).errorCode, 'AUTH_REQUIRED');
@@ -68,18 +68,18 @@ async function start() {
         assert.equal((await call('listUsers')).errorCode, 'FORBIDDEN');
         await api('users/status', { userId: member.user.id, active: false }, admin.token);
         assert.equal((await call('parseVideo', { rawInput: 'https://v.douyin.com/demo/', enableMockFallback: true })).success, false);
-        await waitFor(window, "document.body.innerText.includes('登录视频二创 AI 助手')");
+        await waitFor(window, "document.body.innerText.includes('登录视频二创助手')");
         await api('users/status', { userId: member.user.id, active: true }, admin.token);
         assert.equal((await call('verifyActive')).errorCode, 'AUTH_REQUIRED');
         await signIn();
         // 不触发业务 IPC，验证真实 30 秒后台监控把已登录界面退回登录页。
         await api('users/status', { userId: member.user.id, active: false }, admin.token);
-        await waitFor(window, "document.body.innerText.includes('登录视频二创 AI 助手')", 40000);
+        await waitFor(window, "document.body.innerText.includes('登录视频二创助手')", 40000);
         await api('users/status', { userId: member.user.id, active: true }, admin.token);
         await signIn();
         await close(proxy);
         assert.equal((await call('listHistoryFromDB')).errorCode, 'AUTH_UNAVAILABLE');
-        await waitFor(window, "document.body.innerText.includes('登录视频二创 AI 助手')");
+        await waitFor(window, "document.body.innerText.includes('登录视频二创助手')");
         assert.equal((await call('getAuthStatus')).needsSetup, false);
         await close(server);
         completed = true; clearTimeout(timer);

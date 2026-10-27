@@ -6,7 +6,7 @@ import path from 'node:path';
 import { AuthService } from '../electron/services/authService';
 import { LocalSQLiteManager } from '../electron/db/sqliteService';
 
-test('首次数据库初始化完成并可读取历史记录', async () => {
+test('新设备数据库历史和知识库为空，重启不生成示例', async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'video-remix-db-'));
   const db = new LocalSQLiteManager(directory);
   let timer: ReturnType<typeof setTimeout>;
@@ -15,7 +15,8 @@ test('首次数据库初始化完成并可读取历史记录', async () => {
       timer = setTimeout(() => reject(new Error('数据库初始化超时')), 3000);
     })]);
     const records = await db.listRecords();
-    assert.equal(records.length, 1);
+    assert.equal(records.length, 0);
+    assert.deepEqual(await db.listKnowledgeDocs(), []);
   } finally {
     clearTimeout(timer!);
     db.close();
@@ -72,7 +73,7 @@ test('账号初始化、密码哈希、权限、会话撤销与停用拦截', as
 
 test('历史和知识库支持筛选、更新、删除及重启后读取', async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'video-remix-persist-'));
-  let db = new LocalSQLiteManager(directory);
+  let db = new LocalSQLiteManager(directory, undefined, true);
   try {
     await db.ensureInitialized();
     const seed = (await db.listRecords())[0];
@@ -84,7 +85,7 @@ test('历史和知识库支持筛选、更新、删除及重启后读取', async
       fullContent:'企业正文',contentSnippet:'企业正文',charCount:4,enabled:true});
     await db.toggleKnowledgeDoc('persist-doc',false);
     db.close();
-    db = new LocalSQLiteManager(directory);
+    db = new LocalSQLiteManager(directory, undefined, true);
     await db.ensureInitialized();
     const results = await db.listRecords({platform:'xiaohongshu',search:'业务验证'});
     assert.equal(results.length,1); assert.equal(results[0].originalTranscript,'人工修订口播');
@@ -107,7 +108,7 @@ test('主动清空历史和知识库后重启不会恢复示例数据', async ()
   let db = new LocalSQLiteManager(directory);
   try {
     await db.ensureInitialized();
-    assert.equal((await db.listRecords()).length, 1);
+    assert.equal((await db.listRecords()).length, 0);
     assert.equal((await db.listKnowledgeDocs()).length, 0);
     await db.upsertKnowledgeDoc({ id: 'temporary', name: '文档.txt', filePath: '', fileType: 'txt', sizeBytes: 6, uploadedAt: new Date().toISOString(),
       fullContent: '测试资料', contentSnippet: '测试资料', charCount: 4, enabled: true });
@@ -126,7 +127,7 @@ test('主动清空历史和知识库后重启不会恢复示例数据', async ()
 
 test('旧库迁移后仍可读取旧历史，原始素材与人工修改稿分别跨重启保留', async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(),'remix-source-history-'));
-  let db = new LocalSQLiteManager(directory);
+  let db = new LocalSQLiteManager(directory, undefined, true);
   try {
     const oldRecord = (await db.listRecords())[0];
     db.close();
@@ -136,7 +137,7 @@ test('旧库迁移后仍可读取旧历史，原始素材与人工修改稿分�
     const legacy = new SQL.Database(await fs.readFile(file));
     legacy.run('ALTER TABLE history_records DROP COLUMN source_content_json');
     await fs.writeFile(file,Buffer.from(legacy.export())); legacy.close();
-    db = new LocalSQLiteManager(directory);
+    db = new LocalSQLiteManager(directory, undefined, true);
     assert.equal((await db.listRecords())[0].id, oldRecord.id);
     assert.equal((await db.listRecords())[0].sourceContent, undefined);
     const sourceContent = {platform:'douyin' as const,extractedUrl:'https://v.douyin.com/demo/',title:'原视频',author:'作者',
@@ -144,9 +145,57 @@ test('旧库迁移后仍可读取旧历史，原始素材与人工修改稿分�
       extractionDetails:{provider:'linkdigest' as const,transcriptSegments:[{t:0,text:'原始口播'}],onScreen:[],images:[{ocr:'第一张',description:'图一'},{ocr:'第三张',description:'图三'}],
         ocrText:['第一张','第三张'],keyPoints:[],warnings:['测试覆盖提示'],credits:3,coverage:{imagesRead:2,imagesTotal:3}}};
     await db.upsertRecord({...oldRecord,id:'source-snapshot',originalTranscript:'人工修改口播',sourceContent});
-    db.close(); db = new LocalSQLiteManager(directory);
+    db.close(); db = new LocalSQLiteManager(directory, undefined, true);
     const restored = (await db.listRecords()).find(item => item.id === 'source-snapshot')!;
     assert.equal(restored.originalTranscript,'人工修改口播'); assert.deepEqual(restored.sourceContent,sourceContent);
     assert.equal((await db.listRecords()).find(item => item.id === oldRecord.id)?.sourceContent,undefined);
   } finally { db.close(); await fs.rm(directory,{recursive:true,force:true}); }
+});
+
+
+test('删除账号需要管理员权限，保护自己和内置账号，撤销会话并跨重启保留', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'remix-delete-user-'));
+  let db = new LocalSQLiteManager(directory);
+  const auth = new AuthService(db);
+  try {
+    const admin = await auth.setup(1, 'admin-delete-password', '管理员');
+    const member = await auth.createUser(1, { username: 'delete_member', password: 'member-delete-password', displayName: '待删除成员', role: 'member' });
+    const otherAdmin = await auth.createUser(1, { username: 'other_admin', password: 'other-admin-password', displayName: '其他管理员', role: 'admin' });
+    await auth.login(2, member.username, 'member-delete-password');
+    await auth.login(3, member.username, 'member-delete-password');
+    await assert.rejects(auth.deleteUser(2, otherAdmin.id), { code: 'FORBIDDEN' });
+    await assert.rejects(auth.deleteUser(1, admin.id), { code: 'PROTECTED_ACCOUNT' });
+    await auth.login(4, otherAdmin.username, 'other-admin-password');
+    await assert.rejects(auth.deleteUser(4, otherAdmin.id), { code: 'PROTECTED_ACCOUNT' });
+    await assert.rejects(auth.deleteUser(4, admin.id), { code: 'PROTECTED_ACCOUNT' });
+    await auth.deleteUser(1, member.id);
+    assert.equal(db.findUser('id', member.id), undefined);
+    await assert.rejects(auth.requireUser(2), { code: 'AUTH_REQUIRED' });
+    await assert.rejects(auth.requireUser(3), { code: 'AUTH_REQUIRED' });
+    await assert.rejects(auth.login(2, member.username, 'member-delete-password'), { code: 'INVALID_CREDENTIALS' });
+    await assert.rejects(auth.resetPassword(1, member.id, 'replacement-password'), { code: 'USER_NOT_FOUND' });
+    await assert.rejects(auth.deleteUser(1, member.id), { code: 'USER_NOT_FOUND' });
+    db.close(); db = new LocalSQLiteManager(directory); await db.ensureInitialized();
+    assert.equal(db.findUser('id', member.id), undefined);
+    assert.equal(db.findUser('id', admin.id)?.username, 'admin');
+  } finally { db.close(); await fs.rm(directory, { recursive: true, force: true }); }
+});
+
+
+test('升级仅移除未编辑的内置示例，保留用户修改及业务记录', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'remix-demo-cleanup-'));
+  let db = new LocalSQLiteManager(directory, undefined, true);
+  try {
+    const sample = (await db.listRecords())[0];
+    await db.upsertRecord({ ...sample, id: 'real-history', title: '用户业务记录' });
+    db.close(); db = new LocalSQLiteManager(directory);
+    assert.deepEqual((await db.listRecords()).map(record => record.id), ['real-history']);
+    db.close();
+    db = new LocalSQLiteManager(directory, undefined, true);
+    await db.upsertRecord({ ...sample, originalTranscript: '用户修改后的原稿' });
+    db.close(); db = new LocalSQLiteManager(directory);
+    const records = await db.listRecords();
+    assert.equal(records.length, 2);
+    assert.equal(records.find(record => record.id === sample.id)?.originalTranscript, '用户修改后的原稿');
+  } finally { db.close(); await fs.rm(directory, { recursive: true, force: true }); }
 });

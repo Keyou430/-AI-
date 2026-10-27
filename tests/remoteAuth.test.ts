@@ -187,3 +187,37 @@ test('登录请求返回前退出，不恢复已撤销的本地登录状态', as
     assert.equal(remoteLogout, true);
   } finally { release(); await close(server); }
 });
+
+
+test('远程删除账号撤销全部会话，保护管理员与当前账号，拒绝成员越权', async () => {
+  const f = await fixture();
+  try {
+    const { admin, user } = await member(f);
+    const one = f.client(); const two = f.client();
+    await one.login(2, 'employee', memberPassword); await two.login(3, 'employee', memberPassword);
+    const root = await admin.requireUser(1);
+    await assert.rejects(one.deleteUser(2, root.id), { code: 'FORBIDDEN' });
+    await assert.rejects(admin.deleteUser(1, root.id), { code: 'PROTECTED_ACCOUNT' });
+    await admin.deleteUser(1, user.id);
+    assert.ok(!(await admin.listUsers(1)).some(item => item.id === user.id));
+    await assert.rejects(one.requireUser(2), { code: 'AUTH_REQUIRED' });
+    await assert.rejects(two.requireUser(3), { code: 'AUTH_REQUIRED' });
+    await assert.rejects(two.login(3, 'employee', memberPassword), { code: 'INVALID_CREDENTIALS' });
+    await assert.rejects(admin.deleteUser(1, user.id), { code: 'USER_NOT_FOUND' });
+  } finally { await f.dispose(); }
+});
+
+test('旧授权服务不支持删除时给出升级提示，保留管理员会话', async () => {
+  const server = http.createServer((req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    if (req.url === '/v1/login') res.end(JSON.stringify({success:true,token:'a'.repeat(64),user:{id:'admin-id',role:'admin',isActive:true}}));
+    else { res.statusCode = 404; res.end(JSON.stringify({success:false,errorCode:'NOT_FOUND'})); }
+  });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const client = new RemoteAuthService('http://127.0.0.1:' + (server.address() as {port:number}).port, 1000, true);
+    await client.login(1, 'admin', adminPassword);
+    await assert.rejects(client.deleteUser(1, 'target-id'), {code:'SERVICE_UPDATE_REQUIRED',message:'授权服务尚未支持删除账号，请联系管理员更新服务后重试'});
+    assert.equal(client.hasSession(1), true);
+  } finally { await close(server); }
+});

@@ -10,7 +10,7 @@ interface SecretStorage {
   decryptString(value: Buffer): string;
 }
 
-// 只向界面返回配置状态，API Key 使用操作系统安全存储加密后落盘。
+// 只向界面返回配置状态，接口密钥 使用操作系统安全存储加密后落盘。
 export class LocalProviderService {
   private readonly file: string;
   constructor(directory: string, private readonly storage: SecretStorage) {
@@ -34,17 +34,17 @@ export class LocalProviderService {
     if (!this.storage.isEncryptionAvailable()) throw new AuthError('INVALID_CONFIG', '系统密钥存储不可用，无法安全保存');
     if (!input || typeof input.llmBaseUrl !== 'string' || typeof input.videoParserEndpoint !== 'string' ||
         typeof input.llmModel !== 'string' || input.llmModel.length > 128) throw new AuthError('INVALID_CONFIG', '接口配置无效');
-    for (const address of [input.llmBaseUrl, input.videoParserEndpoint]) {
+    for (const [label, address] of [['模型接口地址', input.llmBaseUrl], ['内容提取接口地址', input.videoParserEndpoint]]) {
       if (!address) continue;
       try { const url = new URL(address);
         if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || address.length > 2048) throw new Error();
-      } catch { throw new AuthError('INVALID_CONFIG', '接口地址须为不带凭据或查询参数的 HTTPS 地址'); }
+      } catch { throw new AuthError('INVALID_CONFIG', label + '须为 HTTPS 地址，且不能包含用户名、密码、查询参数或片段'); }
     }
     const previous = this.read();
     const videoParserProvider = input.videoParserProvider === undefined ? previous.videoParserProvider : input.videoParserProvider;
     if (videoParserProvider !== undefined && !['custom', 'yaoan', 'linkdigest'].includes(videoParserProvider)) throw new AuthError('INVALID_CONFIG', '请选择有效的内容提取厂商');
     if (previous.videoParserApiKey && (videoParserProvider || 'custom') !== (previous.videoParserProvider || 'custom') && (typeof input.videoParserApiKey !== 'string' || !input.videoParserApiKey.trim())) {
-      throw new AuthError('INVALID_CONFIG', '更换内容提取厂商时，请填写对应厂商的 API Key');
+      throw new AuthError('INVALID_CONFIG', '更换内容提取厂商时，请填写对应厂商的 接口密钥');
     }
     const linkDigestMaxCredits = input.linkDigestMaxCredits === undefined ? previous.linkDigestMaxCredits : input.linkDigestMaxCredits;
     if (linkDigestMaxCredits !== undefined && (!Number.isInteger(linkDigestMaxCredits) || linkDigestMaxCredits < 1 || linkDigestMaxCredits > 1000)) {
@@ -61,12 +61,14 @@ export class LocalProviderService {
       ...(linkDigestMaxCredits !== undefined ? { linkDigestMaxCredits } : {}) };
     for (const key of ['llmApiKey', 'videoParserApiKey'] as const) {
       if (input[key] !== undefined && (typeof input[key] !== 'string' || input[key]!.length > 4096 || /[\r\n]/.test(input[key]!))) {
-        throw new AuthError('INVALID_CONFIG', '密钥格式无效');
+        throw new AuthError('INVALID_CONFIG', (key === 'llmApiKey' ? '模型接口密钥' : '内容提取接口密钥') + '格式无效：不能包含换行，长度不能超过 4096 字符');
       }
       if (input[key]?.trim()) next[key] = input[key]!.trim();
     }
     if ((next.llmApiKey && (!next.llmBaseUrl || !next.llmModel)) || (next.videoParserApiKey && !next.videoParserEndpoint && !['yaoan', 'linkdigest'].includes(next.videoParserProvider || 'custom'))) {
-      throw new AuthError('INVALID_CONFIG', '填写密钥时须同时填写对应接口地址和模型名称');
+      throw new AuthError('INVALID_CONFIG', next.llmApiKey && (!next.llmBaseUrl || !next.llmModel)
+        ? '模型配置不完整：填写模型密钥时，须同时填写模型接口地址和模型名称'
+        : '内容提取配置不完整：使用自定义厂商时，须填写内容提取接口完整地址');
     }
     fs.mkdirSync(path.dirname(this.file), { recursive: true });
     const temporary = this.file + '.tmp';

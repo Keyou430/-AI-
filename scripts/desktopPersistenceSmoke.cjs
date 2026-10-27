@@ -26,7 +26,7 @@ if (!process.versions.electron) {
     fs.writeFileSync(path.join(root, 'release', remote ? 'universal-persistence-acceptance.json' : 'local-persistence-acceptance.json'), JSON.stringify({
       verifiedAt: new Date().toISOString(), version: require(path.join(root, 'package.json')).version,
       authentication: remote ? 'server' : 'local-test-only', serverBusinessRequests: 0, systemEncryption: true, processRestarts: 5, knowledgePersistence: true,
-      keywordPersistence: true, apiKeyPersistence: true, updatesPersisted: true, directProviderRoutingWithFixture: true,
+      sidebarStateAcrossProcessRestarts: true, keywordPersistence: true, apiKeyPersistence: true, updatesPersisted: true, directProviderRoutingWithFixture: true,
       parserProtocolPersistence: true, configurableRequestVerified: true,
       aggregateProviderFixtureVerified: true, linkDigestAsyncFixtureVerified: true, linkDigestOcrOrderVerified: true, linkDigestBudgetPersistence: true, editedGenerationWithoutReextract: true, sourceSnapshotPersistence: true, partialTranscriptionWarning: true,
       freshDeviceEmpty: true, plaintextKeysAbsent: true,
@@ -128,6 +128,7 @@ if (!process.versions.electron) {
   };
   app.on('browser-window-created', (_event, window) => {
     window.show = () => {};
+    window.setContentSize(1440, 900);
     window.webContents.once('did-finish-load', async () => {
       try {
         const js = expression => window.webContents.executeJavaScript(expression);
@@ -142,8 +143,15 @@ if (!process.versions.electron) {
           await waitFor(window, 'Boolean(document.querySelector("[name=username]"))');
           await js('document.querySelector("[name=username]").value="admin"; document.querySelector("[name=password]").value=' + JSON.stringify(password) + '; document.querySelector("form").requestSubmit()');
         }
-        await waitFor(window, 'document.body.innerText.includes("二创工作台")');
-        await js('Array.from(document.querySelectorAll("nav button")).find(el => el.textContent.includes("系统设置")).click()');
+        await waitFor(window, 'Boolean(document.querySelector("[data-testid=editable-transcript]"))');
+        assert.equal(await js('document.querySelector("aside").dataset.collapsed'), phase === 'edit' ? 'true' : 'false');
+        if (phase === 'seed' || phase === 'edit') {
+          await js('document.querySelector("aside button[aria-controls=desktop-navigation]").click()');
+          await waitFor(window, 'document.querySelector("aside").dataset.collapsed === ' + JSON.stringify(phase === 'seed' ? 'true' : 'false'));
+        }
+        await js('document.querySelector("nav button[aria-label=设置]").click()');
+        await waitFor(window, 'Boolean(document.querySelector("[aria-label=设置分类]"))');
+        await js('Array.from(document.querySelectorAll("[aria-label=设置分类] [role=tab]")).find(el => el.textContent === "系统设置").click()');
         await waitFor(window, 'Array.from(document.querySelectorAll("button")).some(el => el.textContent.includes("保存本设备接口配置") && !el.disabled)');
         const storage = () => js('JSON.parse(localStorage.getItem("video-remix-ai-full-v3-storage")).state');
         const docs = async () => (await call('listKnowledgeDocsFromDB')).docs;
@@ -182,27 +190,31 @@ if (!process.versions.electron) {
             assert.equal(imageRecord.sourceContent.extractionDetails.images[2].ocr,'第三张图片文字');
             assert.equal((await storage()).parsedVideo.extractionDetails.images.length,3);
             assert.ok((await storage()).editedTranscript.includes('第三张图片文字'));
-            await js('Array.from(document.querySelectorAll("nav button")).find(el=>el.textContent.includes("历史记录")).click()');
-            await waitFor(window,'document.querySelectorAll("div.cursor-pointer").length > 0');
-            await js('Array.from(document.querySelectorAll("[role=tab]")).find(el=>el.textContent.includes("口播")).dispatchEvent(new MouseEvent("mousedown",{bubbles:true,button:0,ctrlKey:false}))');
+            await js('document.querySelector("nav button[aria-label=历史记录]").click()');
+            await waitFor(window,'document.querySelectorAll("[data-testid=history-record]").length > 0');
+            await js('Array.from(document.querySelectorAll("[role=tab]")).find(el=>el.textContent.includes("原稿对照")).click()');
             await waitFor(window,'Boolean(document.querySelector("[data-testid=extraction-details]"))');
             assert.equal(await js('document.querySelectorAll("[data-testid=image-ocr]").length'),3);
-            await js('Array.from(document.querySelectorAll("nav button")).find(el=>el.textContent.includes("系统设置")).click()');
+            await js('document.querySelector("nav button[aria-label=设置]").click()');
+            await waitFor(window, 'Boolean(document.querySelector("[aria-label=设置分类]"))');
+            await js('Array.from(document.querySelectorAll("[aria-label=设置分类] [role=tab]")).find(el => el.textContent === "系统设置").click()');
           }
           assert.deepEqual((await storage()).keywords.map(k => k.text), [phase === 'edit' ? '首次关键词' : '修改关键词']);
           assert.equal((await docs())[0].fullContent, '持久化知识库正文');
           assert.equal((await docs())[0].enabled, phase === 'edit');
         }
         if (phase === 'seed' || phase === 'edit') {
+          await js('Array.from(document.querySelectorAll("[aria-label=设置分类] [role=tab]")).find(el => el.textContent === "内容设置").click()');
           if (phase === 'edit') {
-            await js('Array.from(document.querySelectorAll("button")).find(el => el.textContent.trim() === "×").click()');
+            await js('document.querySelector("button[aria-label^=移除关键词]").click()');
             const doc = (await docs())[0];
             assert.equal((await call('toggleKnowledgeDocInDB', { id: doc.id, enabled: false })).success, true);
           }
           const keyword = phase === 'seed' ? '首次关键词' : '修改关键词';
-          await js('{ const input = document.querySelector("input[placeholder*=业务关键词]"); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(input,' + JSON.stringify(keyword) + '); input.dispatchEvent(new Event("input", { bubbles: true })); }');
-          await js('document.querySelector("input[placeholder*=业务关键词]").form.requestSubmit()');
+          await js('{ const input = document.querySelector("#new-keyword"); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(input,' + JSON.stringify(keyword) + '); input.dispatchEvent(new Event("input", { bubbles: true })); }');
+          await js('document.querySelector("#new-keyword").form.requestSubmit()');
           await waitFor(window, 'document.body.innerText.includes(' + JSON.stringify(keyword) + ')');
+          await js('Array.from(document.querySelectorAll("[aria-label=设置分类] [role=tab]")).find(el => el.textContent === "系统设置").click()');
           const values = { llmBaseUrl: 'https://api.example.com/v1', llmModel: phase === 'seed' ? 'initial-model' : 'updated-model',
             llmApiKey: phase === 'seed' ? key : updatedKey, videoParserEndpoint: 'https://parser.example.com/parse',
             videoParserApiKey: phase === 'seed' ? videoKey : '' };
@@ -236,11 +248,12 @@ if (!process.versions.electron) {
           await js('Array.from(document.querySelectorAll("form")).find(el => el.innerText.includes("保存本设备接口配置")).requestSubmit()');
           await waitFor(window, 'document.body.innerText.includes("本设备接口配置已加密保存")');
           assert.equal(provider.publicSettings().videoParserProvider,'yaoan');
-          await js('Array.from(document.querySelectorAll("label")).find(el => el.textContent.includes("启用仿真模式")).querySelector("input").click()');
-          await js('Array.from(document.querySelectorAll("nav button")).find(el => el.textContent.includes("二创工作台")).click()');
+          await js('{ const toggle = Array.from(document.querySelectorAll("label")).find(el => el.textContent.includes("启用仿真模式")).querySelector("input"); if (toggle.checked) toggle.click(); }');
+          await js('document.querySelector("nav button[aria-label=二创工作台]").click()');
           const extract = async (url, expected) => {
-            await waitFor(window, 'Boolean(document.querySelector("[data-testid=extract-video]:not(:disabled)"))');
+            await waitFor(window, 'Boolean(document.querySelector("[name=sourceVideoUrl]"))');
             await js('{const input=document.getElementsByName("sourceVideoUrl")[0]; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(input,' + JSON.stringify(url) + '); input.dispatchEvent(new Event("input",{bubbles:true}));}');
+            await waitFor(window, '!document.querySelector("[data-testid=extract-video]").disabled');
             await js('document.querySelector("[data-testid=extract-video]").click()');
             await waitFor(window, 'document.querySelector("[data-testid=editable-transcript]")?.value === ' + JSON.stringify(expected));
             assert.equal(await js('document.querySelector("[data-testid=published-text]").textContent'),'聚合发布正文');
@@ -266,10 +279,11 @@ if (!process.versions.electron) {
           await js('Array.from(document.querySelectorAll("form")).find(el=>el.innerText.includes("保存本设备接口配置")).requestSubmit()');
           await waitFor(window,'document.body.innerText.includes("本设备接口配置已加密保存")');
           assert.equal(provider.publicSettings().videoParserProvider,'linkdigest');
-          await js('Array.from(document.querySelectorAll("nav button")).find(el=>el.textContent.includes("二创工作台")).click()');
+          await js('document.querySelector("nav button[aria-label=二创工作台]").click()');
           const extract=async(url)=>{
-            await waitFor(window,'Boolean(document.querySelector("[data-testid=extract-video]:not(:disabled)"))');
+            await waitFor(window,'Boolean(document.querySelector("[name=sourceVideoUrl]"))');
             await js('{const input=document.getElementsByName("sourceVideoUrl")[0];Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(input,'+JSON.stringify(url)+');input.dispatchEvent(new Event("input",{bubbles:true}));}');
+            await waitFor(window, '!document.querySelector("[data-testid=extract-video]").disabled');
             await js('document.querySelector("[data-testid=extract-video]").click()');
           };
           await extract('https://v.douyin.com/linkdigest-fixture/');

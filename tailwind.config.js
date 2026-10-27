@@ -9,6 +9,10 @@ module.exports = {
     extend: {
       colors: {
         border: "hsl(var(--border))",
+        sidebar: "hsl(var(--sidebar))",
+        success: "hsl(var(--success))",
+        warning: "hsl(var(--warning))",
+        popover: { DEFAULT: "hsl(var(--popover))", foreground: "hsl(var(--popover-foreground))" },
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",

@@ -1,4 +1,6 @@
 import React, { useEffect } from 'react';
+import { MotionConfig } from 'motion/react';
+import { ToastProvider } from './components/ui/Toast';
 import { LoginView } from './views/LoginView';
 import { AccountsView } from './views/AccountsView';
 import { useAuthStore } from './store/useAuthStore';
@@ -8,7 +10,9 @@ import { HistoryView } from './views/HistoryView';
 import { SettingsView } from './views/SettingsView';
 import { useAppStore } from './store/useAppStore';
 
-export const App: React.FC = () => {
+export const App: React.FC = () => <ToastProvider><AppContent /></ToastProvider>;
+
+const AppContent: React.FC = () => {
   const { user, initialized, initialize, invalidate } = useAuthStore();
   useEffect(() => {
     initialize();
@@ -35,15 +39,15 @@ const AuthenticatedApp: React.FC = () => {
   }, [setActiveNav, loadHistoryFromSQLite, loadKnowledgeDocsFromSQLite]);
 
   return (
-    <div className="h-screen w-screen overflow-hidden flex bg-slate-50 text-slate-900">
+    <MotionConfig reducedMotion="user"><div className="flex h-dvh w-full flex-col overflow-hidden bg-background text-foreground md:flex-row">
       <Sidebar />
-      <main className="flex-1 flex flex-col h-full overflow-hidden">
+      <main id="main-content" tabIndex={-1} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {activeNav === 'workbench' && <WorkbenchView />}
         {activeNav === 'history' && <HistoryView />}
         {activeNav === 'settings' && <SettingsView />}
         {activeNav === 'accounts' && user?.role === 'admin' && <AccountsView />}
       </main>
-    </div>
+    </div></MotionConfig>
   );
 };
 

@@ -1,3 +1,4 @@
+import type { StorageLocation } from '../../electron/services/storageLocation';
 import type { ProviderSettings, ProviderSettingsInput } from '../../electron/services/providerTypes';
 /**
  * 前端与 Electron 主进程通信桥接层 (完整覆盖 Phase 1 + Phase 2 + Phase 3)
@@ -21,6 +22,8 @@ import {
 declare global {
   interface Window {
     electronAPI?: {
+      getStorageLocation: () => Promise<{ success: boolean; location?: StorageLocation; error?: string }>;
+      chooseStorageLocation: () => Promise<{ success: boolean; canceled?: boolean; location?: StorageLocation; error?: string }>;
       getProviderSettings: () => Promise<{ success: boolean; config?: ProviderSettings; error?: string }>;
       saveProviderSettings: (input: ProviderSettingsInput) => Promise<{ success: boolean; config?: ProviderSettings; error?: string }>;
       getAuthStatus: () => Promise<{ needsSetup: boolean; user: AuthUser | null; mode?: 'local' | 'remote' }>;
@@ -33,6 +36,7 @@ declare global {
       listUsers: () => Promise<AuthResult>;
       createUser: (input: { username: string; password: string; displayName: string; role: 'admin' | 'member' }) => Promise<AuthResult>;
       setUserActive: (input: { userId: string; active: boolean }) => Promise<AuthResult>;
+      deleteUser: (input: { userId: string }) => Promise<AuthResult>;
       resetUserPassword: (input: { userId: string; password: string }) => Promise<AuthResult>;
       onAuthRequired: (callback: (data: { message: string }) => void) => () => void;
       parseVideo: (payload: any) => Promise<any>;
@@ -204,7 +208,7 @@ export async function fetchSQLiteDatabaseInfo(): Promise<DatabaseStatusInfo> {
   const rawBytes = new Blob([JSON.stringify(records) + JSON.stringify(kbDocs)]).size;
   return {
     engine: 'browser-local',
-    dbPath: '浏览器预览缓存（运行 npm run dev:electron 将启用本地 .sqlite 数据库文件）',
+    dbPath: '浏览器预览缓存（桌面客户端使用本地数据库）',
     totalCount: records.length,
     knowledgeDocCount: kbDocs.length,
     dbSizeBytes: rawBytes,
@@ -374,7 +378,7 @@ export async function parseVideoLinkClient(
   if (url.includes('quota-error')) {
     return {
       success: false,
-      errorMessage: '第三方视频解析 API 额度已耗尽，请前往【设置页】更换有效的 API Key。',
+      errorMessage: '第三方内容提取接口 额度已耗尽，请前往【设置页】更换有效的接口密钥。',
     };
   }
 
@@ -430,7 +434,7 @@ export async function testLLMConnectionClient(
   if (!settings.llmApiKey.trim()) {
     return {
       success: false,
-      message: '请先输入大模型 API Key（或保持开启「内置仿真模式」直接体验全流程）。',
+      message: '请先输入模型接口密钥（或保持开启「内置仿真模式」直接体验全流程）。',
     };
   }
 
