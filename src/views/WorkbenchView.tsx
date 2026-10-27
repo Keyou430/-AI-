@@ -21,6 +21,7 @@ import { ScriptResult } from '../components/message/ScriptResult';
 import { Button } from '../components/ui/Button';
 import { cn } from '../lib/utils';
 import { getTranscriptionNotice } from '../lib/extractionNotices';
+import { getEditableSourceText, isImageTextContent } from '../lib/extractedContent';
 import { getVideoLinkError } from '../../electron/services/videoLink';
 import { notifyError } from '../components/ui/Toast';
 
@@ -73,6 +74,7 @@ export const WorkbenchView: React.FC = () => {
   };
   const linkInputRef = useRef<HTMLInputElement>(null);
   const transcriptionNotice = getTranscriptionNotice(parsedVideo);
+  const imageTextContent = isImageTextContent(parsedVideo);
   const [mobileStep, setMobileStep] = useState<'source' | 'result'>('source');
   const [optimizeOpen, setOptimizeOpen] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -80,7 +82,7 @@ export const WorkbenchView: React.FC = () => {
 
   const isManuallyEdited = Boolean(
     parsedVideo &&
-    (editedTranscript !== parsedVideo.transcript ||
+    (editedTranscript !== getEditableSourceText(parsedVideo) ||
       editedVisualSummary !== parsedVideo.visualSummary)
   );
 
@@ -138,11 +140,11 @@ export const WorkbenchView: React.FC = () => {
         return;
       }
       setExtractNotice(
-        parseRes.isMockData
-          ? '当前为示例数据，请关闭仿真模式后使用真实接口。'
+        isImageTextContent(parseRes.data)
+          ? '图文已提取，正文与图片文字已填入编辑区，核对修改后即可二创。'
           : parseRes.data.transcript.trim()
-            ? '提取已完成，请查看完整性提示并核对口播，再生成二创稿；二创不会重复提取视频。'
-            : '正文／图文已提取，未返回口播；可将正文与图片文字 填入编辑区，核对修改后再二创。'
+            ? '提取已完成，请核对口播后生成二创稿。'
+            : '已提取可用素材，请查看详情并补充文案后再二创。'
       );
     } catch (error) {
       if (useAppStore.getState().workbenchRevision === revision)
@@ -168,7 +170,7 @@ export const WorkbenchView: React.FC = () => {
     };
 
     if (!editedTranscript.trim()) {
-      setParseError('请先提取视频链接或在左侧文本框中输入原热点视频文案。');
+      setParseError('请先提取链接，或在左侧输入需要二创的素材文案。');
       return;
     }
 
@@ -349,22 +351,12 @@ export const WorkbenchView: React.FC = () => {
       <header className="shrink-0 border-b bg-card px-4 py-4 md:px-6">
         <div className="mb-3 flex items-center justify-between">
           <h1 className="text-sm font-semibold tracking-tight">创作工作台</h1>
-          {settings.enableMockFallback && (
-            <button
-              type="button"
-              onClick={() => setActiveNav('settings', 'system')}
-              className="rounded border px-2 py-0.5 text-[11px] text-muted-foreground"
-              title="前往系统设置切换为真实接口"
-            >
-              演示模式
-            </button>
-          )}
         </div>
         <div className="flex items-center gap-2">
           <div className="relative min-w-0 flex-1">
             <Link2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <label htmlFor="source-video-url" className="sr-only">
-              视频分享链接
+              素材分享链接
             </label>
             <input
               ref={linkInputRef}
@@ -475,16 +467,6 @@ export const WorkbenchView: React.FC = () => {
               业务与知识库 <span className="tabular-nums">{activeKnowledgeDocs.length}</span>
               <ArrowUpRight />
             </Button>
-            {settings.enableMockFallback && (
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={busy}
-                onClick={() => setLinkInput('https://v.douyin.com/iY8demo9/')}
-              >
-                加载示例链接
-              </Button>
-            )}
           </div>
         </details>
         <AnimatePresence initial={false}>
@@ -601,12 +583,14 @@ export const WorkbenchView: React.FC = () => {
                         {parsedVideo.publishedText || '未返回发布文案'}
                       </p>
                     </div>
-                    <div>
-                      <h4 className="field-label">原始口播</h4>
-                      <p data-testid="original-transcript" className="reading-text">
-                        {parsedVideo.transcript || '未取得口播文字'}
-                      </p>
-                    </div>
+                    {!imageTextContent && (
+                      <div>
+                        <h4 className="field-label">原始口播</h4>
+                        <p data-testid="original-transcript" className="reading-text">
+                          {parsedVideo.transcript || '未取得口播文字'}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </details>
                 <ExtractedContentDetails content={parsedVideo} onUseText={setEditedTranscript} />
@@ -614,7 +598,7 @@ export const WorkbenchView: React.FC = () => {
             )}
             <div>
               <Composer
-                label="口播文案"
+                label={imageTextContent ? '图文文案' : '口播文案'}
                 data-testid="editable-transcript"
                 value={editedTranscript}
                 onValueChange={setEditedTranscript}
@@ -622,7 +606,9 @@ export const WorkbenchView: React.FC = () => {
                 onSubmit={() => {
                   void handleManualStartGenerate();
                 }}
-                placeholder="在这里核对提取的口播，或直接输入你想改写的文案。"
+                placeholder={imageTextContent
+                  ? '正文与图片文字已填入，可结合素材关键词核对修改后再二创。'
+                  : '在这里核对提取的口播，或直接输入你想改写的文案。'}
                 minHeight={180}
                 maxHeight={480}
                 hint="核对人名、品牌与数字后再生成"
@@ -666,7 +652,7 @@ export const WorkbenchView: React.FC = () => {
               {isGeneratingScript ? '生成中…' : '生成二创脚本'}
             </Button>
             <p className="mt-2 text-center text-[11px] text-muted-foreground">
-              {isManuallyEdited ? '基于人工修改后的文案' : '使用当前口播与业务设置'}
+              {isManuallyEdited ? '基于人工修改后的文案' : imageTextContent ? '使用当前图文与业务设置' : '使用当前口播与业务设置'}
               <span className="hidden xl:inline"> · Ctrl + 回车</span>
             </p>
           </footer>

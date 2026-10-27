@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   ArrowLeft,
   Check,
@@ -15,6 +15,9 @@ import { exportScriptFileClient, openSQLiteDatabaseFolder } from '../services/ip
 import { formatDateTime, cn } from '../lib/utils';
 import { ScriptResult } from '../components/message/ScriptResult';
 import { Button } from '../components/ui/Button';
+import { Modal } from '../components/ui/Modal';
+import { notifyError, notifySuccess } from '../components/ui/Toast';
+import type { HistoryRecord } from '../types';
 import { getScriptOutputText, type OutputTab } from '../lib/scriptOutput';
 
 export function HistoryView() {
@@ -36,6 +39,34 @@ export function HistoryView() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [showDetail, setShowDetail] = useState(false);
   const [outputTab, setOutputTab] = useState<OutputTab>('storyboard');
+  const [deleteTarget, setDeleteTarget] = useState<HistoryRecord | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const cancelDelete = useRef<HTMLButtonElement>(null);
+  const deleting = useRef(false);
+  const closeDelete = () => {
+    if (deleting.current) return;
+    setDeleteTarget(null);
+    setDeleteError('');
+  };
+  const confirmDelete = async () => {
+    if (!deleteTarget || deleting.current) return;
+    deleting.current = true;
+    setIsDeleting(true);
+    setDeleteError('');
+    try {
+      await deleteHistoryRecord(deleteTarget.id);
+      setDeleteTarget(null);
+      notifySuccess('历史记录已删除');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '删除历史记录失败，请重试。';
+      setDeleteError(message);
+      notifyError(message, '历史记录未删除');
+    } finally {
+      deleting.current = false;
+      setIsDeleting(false);
+    }
+  };
   const selectedRecord =
     historyRecords.find((record) => record.id === selectedHistoryId) || historyRecords[0] || null;
   const handleExport = async (format: 'txt' | 'doc') => {
@@ -177,7 +208,8 @@ export function HistoryView() {
                     className="absolute right-0 top-1"
                     aria-label={'删除记录 ' + record.title}
                     onClick={() => {
-                      void deleteHistoryRecord(record.id);
+                      setDeleteError('');
+                      setDeleteTarget(record);
                     }}
                   >
                     <Trash2 />
@@ -283,6 +315,33 @@ export function HistoryView() {
           )}
         </section>
       </div>
+      <Modal
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) closeDelete(); }}
+        title="删除历史记录"
+        description="确认删除这条历史记录？此操作不可撤销。"
+        centered
+        busy={isDeleting}
+        initialFocus={cancelDelete}
+        footer={
+          <>
+            <Button ref={cancelDelete} variant="ghost" disabled={isDeleting} onClick={closeDelete}>
+              取消
+            </Button>
+            <Button variant="danger" disabled={isDeleting} onClick={() => { void confirmDelete(); }}>
+              {isDeleting ? '正在删除…' : '确认删除'}
+            </Button>
+          </>
+        }
+      >
+        <div aria-busy={isDeleting} className="space-y-3">
+          <p className="break-words text-sm font-medium">{deleteTarget?.title}</p>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            将从本机历史记录中永久删除该记录及其保存的脚本、原稿和版本记录。其他历史记录和已导出的文件不受影响。
+          </p>
+          {deleteError && <p role="alert" className="text-sm text-destructive">{deleteError}</p>}
+        </div>
+      </Modal>
     </div>
   );
 }

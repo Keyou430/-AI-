@@ -67,7 +67,7 @@ async function start() {
         await signIn();
         assert.equal((await call('listUsers')).errorCode, 'FORBIDDEN');
         await api('users/status', { userId: member.user.id, active: false }, admin.token);
-        assert.equal((await call('parseVideo', { rawInput: 'https://v.douyin.com/demo/', enableMockFallback: true })).success, false);
+        assert.equal((await call('parseVideo', { rawInput: 'https://v.douyin.com/demo/' })).success, false);
         await waitFor(window, "document.body.innerText.includes('登录视频二创助手')");
         await api('users/status', { userId: member.user.id, active: true }, admin.token);
         assert.equal((await call('verifyActive')).errorCode, 'AUTH_REQUIRED');
@@ -79,11 +79,19 @@ async function start() {
         await signIn();
         await close(proxy);
         assert.equal((await call('listHistoryFromDB')).errorCode, 'AUTH_UNAVAILABLE');
-        await waitFor(window, "document.body.innerText.includes('登录视频二创助手')");
-        assert.equal((await call('getAuthStatus')).needsSetup, false);
+        assert.equal((await call('getAuthStatus')).errorCode, 'AUTH_UNAVAILABLE');
+        assert.equal(await window.webContents.executeJavaScript("Boolean(document.querySelector('[data-testid=editable-transcript]'))"), true);
+        await listen(proxy, Number(endpoint.port));
+        assert.equal((await call('verifyActive')).success, true);
+        assert.equal((await call('getAuthStatus')).user.id, member.user.id);
+        assert.equal((await call('listHistoryFromDB')).success, true);
+        const logDirectory = path.join(desktopDirectory, 'logs');
+        const logs = fs.readdirSync(logDirectory).flatMap(name => fs.readFileSync(path.join(logDirectory, name), 'utf8').trim().split('\n').map(line => JSON.parse(line)));
+        assert.ok(logs.some(entry => entry.event === 'auth.verification-failed' && entry.errorCode === 'AUTH_UNAVAILABLE' && entry.error?.cause));
+        await close(proxy);
         await close(server);
         completed = true; clearTimeout(timer);
-        console.log('员工版打包桌面验证通过：HTTPS 登录、禁止本地初始化、成员权限、跨客户端停用、旧会话撤销、真实 30 秒空闲锁定及断网锁定。');
+        console.log('员工版打包桌面验证通过：HTTPS 登录、禁止本地初始化、成员权限、跨客户端停用、旧会话撤销、真实 30 秒空闲锁定、断网保留登录及恢复后直接使用。');
         app.quit();
       } catch (error) { console.error(error); clearTimeout(timer); await close(proxy); await close(server); app.exit(1); }
     });

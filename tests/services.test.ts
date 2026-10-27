@@ -23,11 +23,11 @@ test('解析分享链接并拒绝伪造域名', () => {
   assert.equal(extractUrlAndPlatform('https://douyin.com.evil.test').platform, null);
 });
 
-test('真实模式未配置时明确失败', async () => {
-  const parsed = await parseShortVideoLink({ rawInput: 'https://v.douyin.com/demo/', enableMockFallback: false });
+test('旧仿真参数无法绕过缺少接口配置的校验', async () => {
+  const parsed = await parseShortVideoLink({ rawInput: 'https://v.douyin.com/demo/', ...{ enableMockFallback: true } });
   assert.equal(parsed.success, false);
   await assert.rejects(streamGenerateScript({ requestId: 'missing', config: { apiKey: '', baseURL: '', model: '' },
-    systemPrompt: '', userPrompt: '', targetDurationSec: 18, userCameraWork: '', enableMockFallback: false }, () => {}), /接口密钥/);
+    systemPrompt: '', userPrompt: '', targetDurationSec: 18, userCameraWork: '', ...{ enableMockFallback: true } }, () => {}), /接口密钥/);
 });
 
 test('解析接口通过 HTTP 合约接收链接并返回真实字段', async () => {
@@ -40,8 +40,8 @@ test('解析接口通过 HTTP 合约接收链接并返回真实字段', async ()
     res.end(JSON.stringify({ data: { transcript: '接口口播', visual_summary: '接口画面', duration: 20 } }));
   }, async (baseURL) => {
     for (const rawInput of ['https://v.douyin.com/demo/']) {
-      const result = await parseShortVideoLink({ rawInput, apiEndpoint: baseURL, apiKey: 'test-key', enableMockFallback: false });
-      assert.equal(result.success, true); assert.equal(result.isMockData, undefined);
+      const result = await parseShortVideoLink({ rawInput, apiEndpoint: baseURL, apiKey: 'test-key', ...{ enableMockFallback: true } });
+      assert.equal(result.success, true); assert.equal('isMockData' in result, false);
       assert.equal(result.data?.transcript, '接口口播');
       assert.equal(result.data?.durationSec, 20);
     }
@@ -51,8 +51,8 @@ test('解析接口通过 HTTP 合约接收链接并返回真实字段', async ()
 test('解析接口失败或缺少口播时不伪造成功', async () => {
   for (const payload of [{ success: false, message: '配额不足' }, { data: { title: '只有标题' } }]) {
     await withServer((_req, res) => { res.setHeader('Content-Type','application/json'); res.end(JSON.stringify(payload)); }, async (baseURL) => {
-      const result = await parseShortVideoLink({ rawInput: 'https://xhslink.com/demo/', apiEndpoint: baseURL, apiKey: 'test-key', enableMockFallback: false });
-      assert.equal(result.success, false); assert.equal(result.isMockData, undefined);
+      const result = await parseShortVideoLink({ rawInput: 'https://xhslink.com/demo/', apiEndpoint: baseURL, apiKey: 'test-key' });
+      assert.equal(result.success, false); assert.equal('isMockData' in result, false);
     });
   }
 });
@@ -71,7 +71,7 @@ test('模型通过 OpenAI 兼容 SSE 接口传递上下文并拼接输出', asyn
     const chunks: string[] = [];
     const result = await streamGenerateScript({ requestId: 'stream', config: { apiKey:'test-key', baseURL, model:'test-model' },
       systemPrompt:'系统规则', userPrompt:'人工修改后的口播', conversationHistory:[{role:'assistant',content:'上一轮脚本'}],
-      enableMockFallback:false, targetDurationSec:18, userCameraWork:'近景' }, (chunk) => chunks.push(chunk));
+      ...{ enableMockFallback: true }, targetDurationSec:18, userCameraWork:'近景' }, (chunk) => chunks.push(chunk));
     assert.equal(result, '分镜脚本'); assert.equal(chunks.join(''), result);
   });
 });
@@ -118,7 +118,7 @@ test('视频和模型连接失败时向日志回调传递 HTTP 状态', async ()
     res.end(JSON.stringify({message:'private-upstream-response'}));
   }, async (baseURL) => {
     const failures: any[] = [];
-    const result = await parseShortVideoLink({rawInput:'https://v.douyin.com/demo/',apiEndpoint:baseURL,apiKey:'private-api-key',enableMockFallback:false}, error => failures.push(error));
+    const result = await parseShortVideoLink({rawInput:'https://v.douyin.com/demo/',apiEndpoint:baseURL,apiKey:'private-api-key'}, error => failures.push(error));
     assert.equal(result.success, false);
     assert.equal(failures[0].status, 429);
   });
@@ -142,7 +142,7 @@ test('通用解析配置支持 GET 查询鉴权、链接参数和响应字段映
     res.end(JSON.stringify({ success: true, data: { audio_text: '聚合接口口播', desc: '聚合接口标题' } }));
   }, async (baseURL) => {
     const result = await parseShortVideoLink({ rawInput: 'https://v.douyin.com/demo/', apiEndpoint: baseURL,
-      apiKey: 'query-test-key', enableMockFallback: false, apiOptions: { method: 'GET', authMode: 'query',
+      apiKey: 'query-test-key', apiOptions: { method: 'GET', authMode: 'query',
         apiKeyName: 'api_key', urlField: 'share_url', textPath: 'data.audio_text', titlePath: 'data.desc', timeoutSeconds: 120 } });
     assert.equal(result.success, true);
     assert.equal(result.data?.transcript, '聚合接口口播');
@@ -166,7 +166,7 @@ test('通用解析支持自定义请求头及无密钥接口，并按配置发�
       res.end(JSON.stringify({ items: [{ content: '接口正文' }] }));
     }, async (baseURL) => {
       const result = await parseShortVideoLink({ rawInput: 'https://xhslink.com/demo/', apiEndpoint: baseURL,
-        apiKey: authMode === 'none' ? '' : 'header-test-key', enableMockFallback: false,
+        apiKey: authMode === 'none' ? '' : 'header-test-key',
         apiOptions: { method: 'POST', authMode, apiKeyName: 'X-API-Key', urlField: 'share_text',
           textPath: 'items.0.content', titlePath: '', timeoutSeconds: 10 } });
       assert.equal(result.success, true); assert.equal(result.data?.transcript, '接口正文');
@@ -185,10 +185,24 @@ test('字段映射错误、仅返回媒体或业务失败时明确失败，不�
   ]) {
     await withServer((_req, res) => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(payload)); }, async baseURL => {
       const result = await parseShortVideoLink({ rawInput: 'https://v.douyin.com/demo/', apiEndpoint: baseURL,
-        apiKey: 'private-secret', enableMockFallback: false, apiOptions: { method: 'GET', authMode: 'query',
+        apiKey: 'private-secret', apiOptions: { method: 'GET', authMode: 'query',
           apiKeyName: 'api_key', urlField: 'url', textPath: 'data.audio_text', titlePath: '', timeoutSeconds: 10 } });
-      assert.equal(result.success, false); assert.equal(result.isMockData, undefined);
+      assert.equal(result.success, false); assert.equal('isMockData' in result, false);
       assert.equal(result.errorMessage?.includes('private-secret'), false);
     });
   }
+});
+
+
+test('旧仿真参数不能将模型鉴权失败转换为示例脚本', async () => {
+  await withServer((_req, res) => {
+    res.writeHead(401, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: { message: 'Invalid API key' } }));
+  }, async baseURL => {
+    const chunks: string[] = [];
+    await assert.rejects(streamGenerateScript({ requestId: 'legacy-mode', config: { apiKey: 'invalid', baseURL, model: 'fixture' },
+      systemPrompt: '', userPrompt: '', targetDurationSec: 18, userCameraWork: '', ...{ enableMockFallback: true } }, chunk => chunks.push(chunk)),
+      (error: unknown) => error instanceof Error && 'status' in error && error.status === 401);
+    assert.deepEqual(chunks, []);
+  });
 });

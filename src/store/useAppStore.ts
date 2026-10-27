@@ -13,6 +13,7 @@ import {
   RefinementVersion,
 } from '../types';
 import { parseGeneratedScript } from '../lib/scriptParser';
+import { getEditableSourceText } from '../lib/extractedContent';
 import {
   deleteHistoryRecordFromSQLite,
   deleteKnowledgeDocClient,
@@ -22,6 +23,13 @@ import {
   saveHistoryRecordToSQLite,
   toggleKnowledgeDocClient,
 } from '../services/ipcClient';
+
+// 丢弃旧版仿真开关和明文密钥，不改动已保存的用户内容。
+function sanitizeStoredSettings(settings: AppSettings): AppSettings {
+  const sanitized: AppSettings & { enableMockFallback?: unknown } = { ...settings, llmApiKey: '', videoParserApiKey: '' };
+  delete sanitized.enableMockFallback;
+  return sanitized;
+}
 
 type SettingsTab = 'content' | 'system';
 
@@ -143,7 +151,7 @@ export const useAppStore = create<AppState>()(
           workbenchRevision: state.workbenchRevision + 1,
           currentEditingHistoryId: null,
           parsedVideo: info ? { ...info } : null,
-          editedTranscript: info?.transcript || '',
+          editedTranscript: getEditableSourceText(info),
           editedVisualSummary: info?.visualSummary || '',
           conversationMessages: [], refinementHistory: [],
           streamingScriptText: '', parsedScript: parseGeneratedScript(''),
@@ -157,7 +165,7 @@ export const useAppStore = create<AppState>()(
         const orig = get().parsedVideo;
         if (orig) {
           set({
-            editedTranscript: orig.transcript,
+            editedTranscript: getEditableSourceText(orig),
             editedVisualSummary: orig.visualSummary,
           });
         }
@@ -371,7 +379,6 @@ export const useAppStore = create<AppState>()(
         llmModel: '',
         videoParserApiKey: '',
         videoParserEndpoint: '',
-        enableMockFallback: false,
       },
       updateSettings: (partial) =>
         set((state) => ({
@@ -380,10 +387,10 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'video-remix-ai-full-v3-storage',
-      version: 1,
-      migrate: (stored: any) => ({ ...stored, settings: { ...stored?.settings, llmApiKey: '', videoParserApiKey: '' } }),
+      version: 2,
+      migrate: (stored: any) => ({ ...stored, settings: sanitizeStoredSettings(stored?.settings) }),
       merge: (stored: any, current) => ({ ...current, ...stored,
-        settings: { ...current.settings, ...stored?.settings, llmApiKey: '', videoParserApiKey: '' } }),
+        settings: sanitizeStoredSettings({ ...current.settings, ...stored?.settings }) }),
       onRehydrateStorage: () => (state, error) => {
         if (state && !error) queueMicrotask(() => state.updateSettings({ llmApiKey: '', videoParserApiKey: '' }));
       },
@@ -396,7 +403,7 @@ export const useAppStore = create<AppState>()(
         targetDurationSec: state.targetDurationSec,
         userCameraWork: state.userCameraWork,
         keywords: state.keywords,
-        settings: { ...state.settings, llmApiKey: '', videoParserApiKey: '' },
+        settings: sanitizeStoredSettings(state.settings),
       }),
     }
   )

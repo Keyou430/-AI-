@@ -232,15 +232,15 @@ if (!process.versions.electron) {
           }
         }
         if (phase === 'verify') {
-          const parsed = await call('parseVideo', { rawInput: 'https://v.douyin.com/demo/', enableMockFallback: false });
+          const parsed = await call('parseVideo', { rawInput: 'https://v.douyin.com/demo/' });
           assert.equal(parsed.success, true); assert.equal(parsed.data.transcript, '本机接口验收口播');
           assert.equal(parsed.data.title, '本机解析验收');
           assert.equal((await call('testLLMConnection', {})).success, true);
           const generated = await call('generateScriptStream', { requestId: 'local-direct', config: { apiKey: '', baseURL: '', model: '' },
-            systemPrompt: '本机提示词', userPrompt: '本机提示词', targetDurationSec: 18, userCameraWork: '', enableMockFallback: false });
+            systemPrompt: '本机提示词', userPrompt: '本机提示词', targetDurationSec: 18, userCameraWork: '' });
           assert.equal(generated.success, true); assert.equal(generated.fullText, '本机生成验收');
           assert.equal(directParserCalls, 1); assert.equal(directModelCalls, 2);
-          // 通过设置页选择聚合预设与 DeepSeek，关闭仿真后走实际 IPC 和模型流。
+          // 通过设置页选择聚合预设与 DeepSeek，通过实际 IPC 调用接口和模型流。
           await js('Array.from(document.querySelectorAll("button")).find(el => el.textContent.includes("使用 DeepSeek 配置")).click()');
           await js('{ const select = document.getElementsByName("videoParserProvider")[0]; select.value="yaoan"; select.dispatchEvent(new Event("change",{bubbles:true})); }');
           await waitFor(window, '!document.getElementsByName("videoParserEndpoint")[0]');
@@ -248,7 +248,6 @@ if (!process.versions.electron) {
           await js('Array.from(document.querySelectorAll("form")).find(el => el.innerText.includes("保存本设备接口配置")).requestSubmit()');
           await waitFor(window, 'document.body.innerText.includes("本设备接口配置已加密保存")');
           assert.equal(provider.publicSettings().videoParserProvider,'yaoan');
-          await js('{ const toggle = Array.from(document.querySelectorAll("label")).find(el => el.textContent.includes("启用仿真模式")).querySelector("input"); if (toggle.checked) toggle.click(); }');
           await js('document.querySelector("nav button[aria-label=二创工作台]").click()');
           const extract = async (url, expected) => {
             await waitFor(window, 'Boolean(document.querySelector("[name=sourceVideoUrl]"))');

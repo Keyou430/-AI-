@@ -122,7 +122,6 @@ export interface AppSettings {
   llmModel: string;
   videoParserApiKey: string;
   videoParserEndpoint: string;
-  enableMockFallback: boolean;
 }
 
 export interface AuthUser {

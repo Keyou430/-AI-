@@ -1,5 +1,6 @@
 import type { HistoryRecord, ParsedScriptStructure } from '../types';
 import { isVisibleExtractionNotice } from './extractionNotices';
+import { getEditableSourceText, isImageTextContent } from './extractedContent';
 
 export const outputTabs = ['storyboard', 'techniques', 'voiceover', 'raw', 'source'] as const;
 export type OutputTab = (typeof outputTabs)[number];
@@ -62,7 +63,8 @@ export function getScriptOutputText(
     '本次二创输入（含人工修改）\n' + source.originalTranscript,
     ...(content
       ? [
-          '原始提取口播（未修改）\n' + (content.transcript || '未获得有效口播'),
+          (isImageTextContent(content) ? '原始提取图文（未修改）\n' : '原始提取口播（未修改）\n') +
+            (getEditableSourceText(content) || '未获得有效素材文字'),
           '原始发布文案\n' + (content.publishedText || '未返回发布文案'),
         ]
       : []),

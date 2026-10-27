@@ -31,7 +31,7 @@ test('LinkDigest 202 只轮询同一任务一次提交，忽略不可信 poll �
   };
   try {
     const url = 'https://www.xiaohongshu.com/explore/fixture?xsec_token=share-token&xsec_source=app_share';
-    const result = await parseShortVideoLink({rawInput:url,apiProvider:'linkdigest',apiKey:'fixture-secret',linkDigestMaxCredits:7,enableMockFallback:false});
+    const result = await parseShortVideoLink({rawInput:url,apiProvider:'linkdigest',apiKey:'fixture-secret',linkDigestMaxCredits:7});
     assert.equal(result.success,true); assert.equal(requests.length,3);
     assert.equal(requests[0].url,'https://linkdigest.dev/api/v1/digest');
     assert.deepEqual(JSON.parse(String(requests[0].init?.body)),{url,format:'json',depth:'full',partial_ok:false,max_credits:7});
@@ -56,7 +56,7 @@ test('LinkDigest HTTP 错误不重复计费提交，也不回显供应商错误�
       const errors:any[]=[];
       const result=await readLinkDigest({url:link,platform:'douyin',apiKey:'fixture-secret'},error=>errors.push(error));
       assert.equal(result.success,false);assert.equal(calls,1);assert.equal(JSON.stringify(result).includes('fixture-secret'),false);
-      assert.equal(errors[0].status,status);assert.equal(result.isMockData,undefined);
+      assert.equal(errors[0].status,status);assert.equal('isMockData' in result, false);
       if(status===503)assert.match(result.errorMessage!,/平台.*拒绝/);
     }
   }finally{globalThis.fetch=original;}
@@ -129,4 +129,15 @@ test('LinkDigest 拒绝轮询期间替换任务编号，不跟随其他任务或
     const result=await readLinkDigest({url:link,platform:'douyin',apiKey:'fixture-secret'});
     assert.equal(result.success,false);assert.equal(calls,2);assert.match(result.errorMessage!,/任务信息无效/);
   }finally{globalThis.fetch=original;}
+});
+
+
+test('LinkDigest 保留图文标签供关键词展示，不把标签或分析要点写入口播', () => {
+  const result = parseLinkDigestResponse({ ...fixture, platform: 'xiaohongshu', transcript: [],
+    duration_seconds: null, read_seconds: null, images: [{ ocr: '图片正文', description: '图片描述' }],
+    tags: ['新能源', '外贸', '', 123], coverage: { images_read: 1, images_total: 1 } }, 'xiaohongshu', 'https://www.xiaohongshu.com/explore/image-note');
+  assert.equal(result.success, true);
+  assert.deepEqual(result.data?.extractionDetails?.tags, ['新能源', '外贸']);
+  assert.equal(result.data?.transcript, '');
+  assert.deepEqual(result.data?.extractionDetails?.keyPoints, fixture.key_points);
 });

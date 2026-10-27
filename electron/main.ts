@@ -164,7 +164,7 @@ app.whenReady().then(async () => {
   sqliteService = new LocalSQLiteManager(storageLocation.activatePending(), (error) => {
     runtimeLogger.write('warn', 'database.engine-fallback', { error, engine: 'sqlite3-wasm' });
   });
-  authService = createDesktopAuth(sqliteService, path.join(__dirname, '..'), __dirname, app.getPath('userData'));
+  authService = createDesktopAuth(sqliteService, path.join(__dirname, '..'), __dirname, app.getPath('userData'), runtimeLogger);
   await sqliteService.ensureInitialized();
   const database = await sqliteService.getDatabaseInfo();
   runtimeLogger.write('info', 'database.ready', { engine: database.engine });

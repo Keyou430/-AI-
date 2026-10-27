@@ -17,6 +17,7 @@ export interface LinkDigestDetails {
   images: Array<{ description: string; ocr: string }>;
   ocrText: string[];
   keyPoints: string[];
+  tags?: string[];
   warnings: string[];
   transcriptSource?: string;
   credits?: number;
@@ -59,7 +60,7 @@ export function parseLinkDigestResponse(payload: unknown, platform: VideoPlatfor
   if (strings(receipt?.not_captured).length) warnings.push('厂商注明有未读取内容，可能涉及评论、画面或其他素材；本结果不是整帖完整副本。');
   if (!receipt) warnings.push('厂商未返回覆盖凭据，无法确认提取完整性。');
   const details: LinkDigestDetails = { provider: 'linkdigest', transcriptSegments, images, onScreen: segments(raw.on_screen),
-    ocrText: strings(raw.ocr_text), keyPoints: strings(raw.key_points), warnings,
+    ocrText: strings(raw.ocr_text), keyPoints: strings(raw.key_points), tags: strings(raw.tags), warnings,
     ...(typeof raw.transcript_source === 'string' ? { transcriptSource: raw.transcript_source } : {}),
     ...(number(raw.credits) !== undefined ? { credits: number(raw.credits) } : {}),
     ...(typeof raw.cached === 'boolean' ? { cached: raw.cached } : {}), ...(coverage ? { coverage } : {}) };

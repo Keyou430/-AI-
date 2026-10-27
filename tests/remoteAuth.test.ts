@@ -96,15 +96,15 @@ test('定时校验在没有业务操作时发现停用并锁定，停止监控�
   } finally { watch?.stop(); await f.dispose(); }
 });
 
-test('授权服务不可达时撤销本地会话并锁定，恢复服务后须重新登录', async () => {
+test('授权服务不可达时保留会话，但拒绝需要授权的操作', async () => {
   const f = await fixture();
   try {
     const employee = f.client(); await employee.login(1, 'admin', adminPassword);
     await f.stop();
     await assert.rejects(employee.requireUser(1), { code: 'AUTH_UNAVAILABLE' });
-    assert.equal(employee.hasSession(1), false);
-    assert.equal((await employee.status(1)).user, null);
-    await assert.rejects(employee.requireUser(1), { code: 'AUTH_REQUIRED' });
+    assert.equal(employee.hasSession(1), true);
+    await assert.rejects(employee.status(1), { code: 'AUTH_UNAVAILABLE' });
+    await assert.rejects(employee.requireUser(1), { code: 'AUTH_UNAVAILABLE' });
   } finally { await f.dispose(); }
 });
 

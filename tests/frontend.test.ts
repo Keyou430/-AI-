@@ -34,9 +34,9 @@ test('TXT 原文导出，Word 导出包含编码及转义内容', async () => {
   assert.ok(payload!.content.includes('中文 &lt;镜头&gt; &amp; 口播'));
 });
 
-test('浏览器环境关闭仿真后明确阻止真实接口调用', async () => {
+test('浏览器环境不因旧仿真配置返回示例数据', async () => {
   Object.assign(globalThis, {window:{}});
-  const settings = {...useAppStore.getState().settings,enableMockFallback:false};
+  const settings = {...useAppStore.getState().settings,enableMockFallback:true};
   assert.equal((await parseVideoLinkClient('https://v.douyin.com/demo/', settings)).success,false);
   const result = await streamGenerateScriptClient({ settings,systemPrompt:'',userPrompt:'',targetDurationSec:18,userCameraWork:'',onChunk:()=>{} });
   assert.equal(result.success,false);
@@ -151,4 +151,75 @@ test('提取新素材解除旧历史绑定，编辑不改变原始口播且草�
   const prompt = buildUserPrompt({videoInfo:source,editedTranscript:'人工修改稿',editedVisualSummary:'',targetDurationSec:18,
     userCameraWork:'',companyBusinessProfile:'',keywords:[],knowledgeDocs:[]});
   assert.ok(prompt.includes('发布文案')); assert.ok(prompt.includes('人工修改稿')); assert.equal(prompt.includes('原始口播'),false);
+});
+
+
+test('历史删除失败保留记录与选择，不刷新或吞掉具体原因', async () => {
+  const record = historyRecord('delete-failed');
+  const other = historyRecord('delete-kept');
+  let refreshes = 0;
+  let submittedId = '';
+  Object.assign(globalThis, {window:{electronAPI:{
+    deleteHistoryFromDB: async (id: string) => { submittedId = id; return {success:false,error:'数据库暂时不可写'}; },
+    listHistoryFromDB: async () => { refreshes++; return {success:true,records:[]}; },
+  }}});
+  useAppStore.setState({historyRecords:[record,other],selectedHistoryId:record.id});
+  await assert.rejects(useAppStore.getState().deleteHistoryRecord(record.id), /数据库暂时不可写/);
+  assert.equal(submittedId, record.id);
+  assert.deepEqual(useAppStore.getState().historyRecords, [record,other]);
+  assert.equal(useAppStore.getState().selectedHistoryId, record.id);
+  assert.equal(refreshes, 0);
+});
+
+test('历史删除成功只删除指定记录，刷新后仍可查看其他记录', async () => {
+  const record = historyRecord('delete-confirmed');
+  const other = historyRecord('delete-survivor');
+  let records = [record,other];
+  Object.assign(globalThis, {window:{electronAPI:{
+    deleteHistoryFromDB: async (id: string) => { records = records.filter(item => item.id !== id); return {success:true}; },
+    listHistoryFromDB: async () => ({success:true,records}),
+    getDatabaseInfo: async () => ({success:true,info:{engine:'sqlite3-wasm',dbPath:'test',totalCount:records.length,dbSizeBytes:0}}),
+  }}});
+  useAppStore.setState({historyRecords:records,selectedHistoryId:record.id});
+  await useAppStore.getState().deleteHistoryRecord(record.id);
+  assert.deepEqual(useAppStore.getState().historyRecords, [other]);
+  assert.equal(useAppStore.getState().selectedHistoryId, other.id);
+});
+
+
+test('旧设置迁移和重新加载均移除仿真开关，保留业务配置', async () => {
+  const options = useAppStore.persist.getOptions();
+  const previous = { settings: { ...useAppStore.getInitialState().settings, enableMockFallback: true,
+    companyBusinessProfile: '已保存业务', llmApiKey: 'old-secret', videoParserApiKey: 'old-video-secret' } };
+  const migrated = await options.migrate!(previous, 1);
+  const merged = options.merge!(migrated, useAppStore.getInitialState());
+  assert.equal('enableMockFallback' in merged.settings, false);
+  assert.equal(merged.settings.companyBusinessProfile, '已保存业务');
+  assert.equal(merged.settings.llmApiKey, '');
+  assert.equal(merged.settings.videoParserApiKey, '');
+  assert.equal('enableMockFallback' in options.merge!(previous, useAppStore.getInitialState()).settings, false);
+});
+
+
+test('图文提取自动填入正文与图片文字，编辑和恢复保留原始素材', async () => {
+  const source = {
+    platform: 'xiaohongshu' as const, extractedUrl: 'https://www.xiaohongshu.com/explore/image-note',
+    title: '新能源外贸', author: '作者', durationSec: 0, transcript: '', publishedText: '图文正文 #新能源[话题]#',
+    transcriptionStatus: 'empty' as const, visualSummary: '', suggestedCameraWork: '',
+    extractionDetails: { provider: 'linkdigest' as const, transcriptSegments: [], onScreen: [],
+      images: [{ ocr: '图片中的产品与外贸知识', description: '智能图片描述' }], ocrText: ['重复汇总'],
+      keyPoints: ['智能分析内容'], tags: ['新能源', '外贸'], warnings: [] },
+  };
+  useAppStore.getState().setParsedVideo(source);
+  const originalText = useAppStore.getState().editedTranscript;
+  assert.ok(originalText.includes(source.publishedText));
+  assert.ok(originalText.includes('第1张图片文字：\n图片中的产品与外贸知识'));
+  assert.equal(originalText.includes('智能分析'), false);
+  assert.equal(useAppStore.getState().parsedVideo?.transcript, '');
+  useAppStore.getState().setEditedTranscript('人工整理的图文文案');
+  await useAppStore.persist.rehydrate();
+  assert.equal(useAppStore.getState().editedTranscript, '人工整理的图文文案');
+  useAppStore.getState().resetEditedToOriginal();
+  assert.equal(useAppStore.getState().editedTranscript, originalText);
+  assert.equal(useAppStore.getState().parsedVideo?.extractionDetails?.images[0].ocr, source.extractionDetails.images[0].ocr);
 });

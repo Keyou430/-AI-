@@ -5,6 +5,7 @@ import { motion } from 'motion/react';
 import type { ComplianceCheckItem, HistoryRecord, ParsedScriptStructure } from '../../types';
 import { cn } from '../../lib/utils';
 import { ExtractedContentDetails } from '../ExtractedContentDetails';
+import { getEditableSourceText, isImageTextContent } from '../../lib/extractedContent';
 import { Button } from '../ui/Button';
 import { getScriptOutputText, outputTabs, type OutputTab } from '../../lib/scriptOutput';
 
@@ -321,9 +322,9 @@ export function ScriptResult({
                     {source.sourceContent && (
                       <>
                         <div>
-                          <h3 className="field-label">原始提取口播（未修改）</h3>
+                          <h3 className="field-label">{isImageTextContent(source.sourceContent) ? '原始提取图文（未修改）' : '原始提取口播（未修改）'}</h3>
                           <p className="reading-text">
-                            {source.sourceContent.transcript || '未获得有效口播'}
+                            {getEditableSourceText(source.sourceContent) || '未获得有效素材文字'}
                           </p>
                         </div>
                         <div>

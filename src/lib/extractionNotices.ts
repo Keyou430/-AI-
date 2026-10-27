@@ -1,4 +1,5 @@
 import type { ParsedVideoInfo } from '../types';
+import { getExtractedText, isImageTextContent } from './extractedContent';
 
 const hiddenNotices = new Set([
   '口播已返回，但完整性待核对，请查看提取说明。',
@@ -11,7 +12,8 @@ export function isVisibleExtractionNotice(message: string): boolean {
 }
 
 export function getTranscriptionNotice(content: ParsedVideoInfo | null): string | undefined {
-  if (!content?.transcriptionStatus || content.transcriptionStatus === 'succeeded') return;
+  if (!content?.transcriptionStatus || content.transcriptionStatus === 'succeeded' ||
+      (isImageTextContent(content) && getExtractedText(content).trim())) return;
   const message = content.transcriptionMessage || '未获得完整口播，请核对并补充后生成。';
   return isVisibleExtractionNotice(message) ? message : undefined;
 }

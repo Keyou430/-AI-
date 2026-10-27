@@ -1,6 +1,7 @@
 import type { ParsedVideoInfo } from '../types';
 import { Button } from './ui/Button';
 import { isVisibleExtractionNotice } from '../lib/extractionNotices';
+import { getExtractedText, getSourceKeywords, isImageTextContent } from '../lib/extractedContent';
 
 export function ExtractedContentDetails({
   content,
@@ -11,20 +12,21 @@ export function ExtractedContentDetails({
 }) {
   const details = content.extractionDetails;
   if (!details) return null;
-  const imageText = details.images
-    .map((image, index) =>
-      image.ocr.trim() ? '第' + (index + 1) + '张图片文字：\n' + image.ocr : ''
-    )
-    .filter(Boolean);
-  const editableText = [
-    content.publishedText,
-    ...(imageText.length ? imageText : details.ocrText),
-    ...details.onScreen.map((item) => item.text),
-  ]
-    .filter(Boolean)
-    .join('\n\n');
+  const imageTextContent = isImageTextContent(content);
+  const editableText = getExtractedText(content);
+  const keywords = imageTextContent ? getSourceKeywords(content) : [];
   return (
     <div className="space-y-3">
+      {keywords.length > 0 && (
+        <section data-testid="source-keywords" aria-label="素材关键词" className="space-y-2">
+          <h4 className="field-label">素材关键词</h4>
+          <ul className="flex flex-wrap gap-1.5">
+            {keywords.map(keyword => (
+              <li key={keyword} className="rounded-md bg-muted px-2 py-1 text-xs text-foreground">{keyword}</li>
+            ))}
+          </ul>
+        </section>
+      )}
       {details.warnings.filter(isVisibleExtractionNotice).map((warning, index) => (
         <p
           key={index}
@@ -37,7 +39,7 @@ export function ExtractedContentDetails({
       ))}
       <details data-testid="extraction-details" className="disclosure">
         <summary>
-          提取详情与图片文字
+          {imageTextContent ? '图文提取详情' : '提取详情与图片文字'}
           {details.credits !== undefined && (
             <span className="ml-2 font-normal text-muted-foreground">{details.credits} 积分</span>
           )}
@@ -49,8 +51,8 @@ export function ExtractedContentDetails({
           </p>
           {details.coverage && (
             <p className="muted-copy">
-              已转写 {details.coverage.secondsTranscribed ?? '未知'} /{' '}
-              {details.coverage.durationSeconds ?? '未知'} 秒；已读取图片{' '}
+              {!imageTextContent && <>已转写 {details.coverage.secondsTranscribed ?? '未知'} /{' '}
+                {details.coverage.durationSeconds ?? '未知'} 秒；</>}已读取图片{' '}
               {details.coverage.imagesRead ?? '未知'} / {details.coverage.imagesTotal ?? '未知'}{' '}
               张。
             </p>
@@ -105,7 +107,7 @@ export function ExtractedContentDetails({
                 disabled={!editableText.trim()}
                 onClick={() => onUseText(editableText)}
               >
-                将正文／图片文字填入编辑区
+                {imageTextContent ? '重新填入正文与图片文字' : '将正文／图片文字填入编辑区'}
               </Button>
               <p className="muted-copy">此操作替换当前修改稿，原始素材保留。</p>
             </>

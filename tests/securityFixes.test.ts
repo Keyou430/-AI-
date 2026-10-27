@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import http from 'node:http';
 import { createAuthServer } from '../server/authServer';
 import { RemoteAuthService } from '../electron/services/remoteAuthService';
 import { createDesktopAuth as createEmployeeAuth } from '../electron/services/employeeAuth';
@@ -12,9 +13,21 @@ import { streamGenerateScript } from '../electron/services/llmService';
 
 const password = 'Security-fixture-12345';
 const generation = { requestId: 'regression', config: { apiKey: 'client-key', baseURL: 'https://attacker.invalid', model: 'client-model' },
-  systemPrompt: 'system', userPrompt: 'user', enableMockFallback: true, targetDurationSec: 18, userCameraWork: '近景' };
+  systemPrompt: 'system', userPrompt: 'user', targetDurationSec: 18, userCameraWork: '近景' };
+async function streamingProvider() {
+  const server = http.createServer((_request, response) => {
+    response.writeHead(200, { 'Content-Type': 'text/event-stream' });
+    const timer = setInterval(() => response.write('data: ' + JSON.stringify({ choices: [{ delta: { content: '接口片段' } }] }) + '\n\n'), 20);
+    response.on('close', () => clearInterval(timer));
+  });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  return { config: { apiKey: 'fixture-key', baseURL: 'http://127.0.0.1:' + (server.address() as { port: number }).port, model: 'fixture-model' },
+    dispose: () => new Promise<void>(resolve => { server.close(() => resolve()); server.closeAllConnections(); }) };
+}
+
 async function fixture(options: Partial<Parameters<typeof createAuthServer>[0]> = {}) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'remix-security-fix-'));
+  const upstream = await streamingProvider();
   const server = await createAuthServer({ dataDirectory: directory, adminPassword: password, ...options });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   const url = 'http://127.0.0.1:' + (server.address() as { port: number }).port;
@@ -29,7 +42,8 @@ async function fixture(options: Partial<Parameters<typeof createAuthServer>[0]> 
   const member = new RemoteAuthService(url, 2000, true);
   await member.login(2, 'employee', password);
   const dispose = async () => { await new Promise<void>(resolve => { server.close(() => resolve()); server.closeAllConnections(); }); await fs.rm(directory, { recursive: true, force: true }); };
-  return { directory, server, url, request, client, member, user, dispose };
+  return { directory, server, url, request, client, member, user, generation: { ...generation, config: upstream.config },
+    dispose: async () => { await upstream.dispose(); await dispose(); } };
 }
 
 test('员工入口忽略可篡改的本机模式标记，禁止本机初始化', async () => {
@@ -88,7 +102,7 @@ for (const action of ['disable', 'password', 'logout', 'expiry'] as const) {
     try {
       let arrived!: () => void; const first = new Promise<void>(resolve => { arrived = resolve; });
       let chunks = 0;
-      const running = f.member.runAuthorizedTask(2, signal => streamGenerateScript(generation, () => { chunks++; arrived(); }, signal), undefined, 20);
+      const running = f.member.runAuthorizedTask(2, signal => streamGenerateScript(f.generation, () => { chunks++; arrived(); }, signal), undefined, 20);
       const rejected = assert.rejects(running, { code: 'AUTH_REQUIRED' });
       await first;
       if (action === 'disable') await f.client.setActive(1, f.user.id, false);
@@ -106,7 +120,7 @@ test('客户端退出后旧任务不把结果交给新会话', async () => {
   try {
     let arrived!: () => void; const first = new Promise<void>(resolve => { arrived = resolve; });
     let chunks = 0;
-    const running = f.member.runAuthorizedTask(2, signal => streamGenerateScript(generation, () => { chunks++; arrived(); }, signal));
+    const running = f.member.runAuthorizedTask(2, signal => streamGenerateScript(f.generation, () => { chunks++; arrived(); }, signal));
     const rejected = assert.rejects(running, { code: 'AUTH_REQUIRED' });
     await first; await f.member.logout(2); const stopped = chunks; await rejected;
     await f.member.login(2, 'employee', password);
@@ -114,10 +128,13 @@ test('客户端退出后旧任务不把结果交给新会话', async () => {
   } finally { await f.dispose(); }
 });
 
-test('取消信号中断本机仿真流，不产生后续片段', async () => {
-  const controller = new AbortController(); let chunks = 0;
-  await assert.rejects(streamGenerateScript(generation, () => { chunks++; controller.abort(); }, controller.signal), { name: 'AbortError' });
-  assert.equal(chunks, 1);
+test('取消信号中断真实 SSE 请求，不产生后续片段', async () => {
+  const upstream = await streamingProvider();
+  try {
+    const controller = new AbortController(); let chunks = 0;
+    await assert.rejects(streamGenerateScript({ ...generation, config: upstream.config }, () => { chunks++; controller.abort(); }, controller.signal), { name: 'AbortError' });
+    assert.equal(chunks, 1);
+  } finally { await upstream.dispose(); }
 });
 
 test('异步密码计算期间退出或停用再启用，不恢复旧登录；计算不会阻塞事件循环', async () => {
@@ -154,7 +171,7 @@ test('停用账号会将取消信号传递到正在生成的上游请求', async
       return new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } });
     }) as typeof fetch;
     let arrived!: () => void; const first = new Promise<void>(resolve => { arrived = resolve; });
-    const running = f.member.runAuthorizedTask(2, signal => streamGenerateScript({ ...generation, enableMockFallback: false,
+    const running = f.member.runAuthorizedTask(2, signal => streamGenerateScript({ ...generation,
       config: { apiKey: 'local-fixture-key', baseURL: 'https://provider.example/v1', model: 'local-model' } }, () => arrived(), signal), undefined, 20);
     const rejected = assert.rejects(running, { code: 'AUTH_REQUIRED' });
     await first; await f.client.setActive(1, f.user.id, false); await rejected;

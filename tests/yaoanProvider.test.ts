@@ -20,7 +20,7 @@ test('聚合服务自动区分平台端点和密钥参数，只发送一次提�
       ['https://xhslink.cn/demo/', '/api/plugins/xiaohongshu/video_to_text', 'apiKey'],
     ]) {
       const count = requests.length;
-      const result = await parseShortVideoLink({ rawInput: link, apiProvider: 'yaoan', apiKey: 'fixture-secret', enableMockFallback: false });
+      const result = await parseShortVideoLink({ rawInput: link, apiProvider: 'yaoan', apiKey: 'fixture-secret' });
       assert.equal(result.success, true);
       assert.equal(requests.length, count + 1);
       const request = requests.at(-1)!;
@@ -63,9 +63,9 @@ test('鉴权、余额和限流失败不自动重试、不回显供应商错误�
     for (const status of [401,403,429,500]) {
       let count = 0;
       globalThis.fetch = async () => { count++; return new Response('fixture-secret', {status}); };
-      const result = await parseShortVideoLink({rawInput:'https://v.douyin.com/demo/', apiProvider:'yaoan', apiKey:'fixture-secret', enableMockFallback:false});
+      const result = await parseShortVideoLink({rawInput:'https://v.douyin.com/demo/', apiProvider:'yaoan', apiKey:'fixture-secret'});
       assert.equal(result.success, false); assert.equal(count, 1); assert.equal(JSON.stringify(result).includes('fixture-secret'), false);
-      assert.equal(result.isMockData, undefined);
+      assert.equal('isMockData' in result, false);
       assert.match(result.errorMessage!, status === 401 ? /接口密钥/ : status === 403 ? /余额/ : status === 429 ? /限流/ : /500/);
     }
   } finally { globalThis.fetch = original; }

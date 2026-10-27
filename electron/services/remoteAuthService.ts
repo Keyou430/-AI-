@@ -1,5 +1,6 @@
 import { AuthError } from './authError';
 import type { AuthService, AuthUser } from './authService';
+import type { RuntimeLogger } from './runtimeLogger';
 
 export function validateAuthUrl(value: string, allowLoopback = false): string {
   let url: URL;
@@ -29,7 +30,8 @@ export class RemoteAuthService implements Pick<AuthService,
   private readonly sessions = new Map<number, { token: string; generation: number; controller: AbortController }>();
   private readonly generations = new Map<number, number>();
   private readonly baseUrl: string;
-  constructor(url: string, private readonly timeoutMs = 5000, allowLoopback = false) {
+  constructor(url: string, private readonly timeoutMs = 5000, allowLoopback = false,
+    private readonly logger?: Pick<RuntimeLogger, 'write'>) {
     this.baseUrl = validateAuthUrl(url, allowLoopback);
   }
 
@@ -46,25 +48,32 @@ export class RemoteAuthService implements Pick<AuthService,
       const data = await response.json();
       if (!response.ok || !data.success) {
         const code = typeof data.errorCode === 'string' && authMessages[data.errorCode] ? data.errorCode : 'AUTH_UNAVAILABLE';
-        throw new AuthError(code, authMessages[code] || '无法验证授权，请检查网络后重新登录');
+        throw new AuthError(code, authMessages[code] || '授权服务暂时不可用，请稍后重试', { cause: { status: response.status } });
       }
       return data;
     } catch (error) {
       if (error instanceof AuthError) throw error;
-      throw new AuthError('AUTH_UNAVAILABLE', '无法连接授权服务，请检查网络后重新登录');
+      throw new AuthError('AUTH_UNAVAILABLE', error instanceof Error && error.name === 'TimeoutError'
+        ? '授权服务响应超时，请稍后重试' : '暂时无法连接授权服务，请检查网络后重试', { cause: error });
     }
   }
 
   hasSession(senderId: number): boolean { return this.sessions.has(senderId); }
 
-  watchSession(senderId: number, onInvalidated: (error: unknown) => void, intervalMs = 30000) {
+  watchSession(senderId: number, onInvalidated: (error: unknown) => void, intervalMs = 30000,
+    onCheckFailed?: (error: unknown) => void) {
     let checking = false;
     let stopped = false;
     const check = async () => {
       if (stopped || checking || !this.hasSession(senderId)) return;
       checking = true;
       try { await this.requireUser(senderId); }
-      catch (error) { if (!stopped && !this.hasSession(senderId)) onInvalidated(error); }
+      catch (error) {
+        if (!stopped) {
+          onCheckFailed?.(error);
+          if (!this.hasSession(senderId)) onInvalidated(error);
+        }
+      }
       finally { checking = false; }
     };
     const timer = setInterval(() => { void check(); }, intervalMs);
@@ -95,9 +104,9 @@ export class RemoteAuthService implements Pick<AuthService,
     this.sessions.set(senderId, { token: result.token, generation, controller: new AbortController() });
     return result.user;
   }
-  async logout(senderId: number): Promise<void> {
+  async logout(senderId: number, reason?: AuthError): Promise<void> {
     const session = this.sessions.get(senderId);
-    session?.controller.abort();
+    session?.controller.abort(reason);
     this.sessions.delete(senderId);
     this.generations.set(senderId, (this.generations.get(senderId) || 0) + 1);
     if (session) await this.request('logout', {}, session.token).catch(() => {});
@@ -110,10 +119,13 @@ export class RemoteAuthService implements Pick<AuthService,
       if (this.sessions.get(senderId) !== session) throw new AuthError('AUTH_REQUIRED', '登录已失效，请重新登录');
       return result;
     } catch (error) {
-      if (error instanceof AuthError && ['AUTH_REQUIRED', 'ACCOUNT_DISABLED', 'AUTH_UNAVAILABLE'].includes(error.code) &&
+      this.logger?.write('warn', 'auth.verification-failed', {
+        senderId, channel: 'auth:' + route, error,
+        errorCode: error instanceof AuthError ? error.code : 'AUTH_UNAVAILABLE',
+      });
+      if (error instanceof AuthError && ['AUTH_REQUIRED', 'ACCOUNT_DISABLED'].includes(error.code) &&
           this.sessions.get(senderId) === session) {
-        // 网络失败也撤销本地会话，禁止离线继续使用。
-        void this.logout(senderId);
+        void this.logout(senderId, error);
       }
       throw error;
     }
@@ -138,8 +150,9 @@ export class RemoteAuthService implements Pick<AuthService,
     intervalMs = 1000): Promise<T> {
     const session = this.sessions.get(senderId);
     if (!session) throw new AuthError('AUTH_REQUIRED', '请先登录');
-    const combined = AbortSignal.any([session.controller.signal, AbortSignal.timeout(180000), ...(signal ? [signal] : [])]);
-    const watch = this.watchSession(senderId, () => {}, intervalMs);
+    const verification = new AbortController();
+    const combined = AbortSignal.any([session.controller.signal, verification.signal, AbortSignal.timeout(180000), ...(signal ? [signal] : [])]);
+    const watch = this.watchSession(senderId, () => {}, intervalMs, error => verification.abort(error));
     try {
       await this.requireUser(senderId);
       combined.throwIfAborted();
@@ -149,6 +162,8 @@ export class RemoteAuthService implements Pick<AuthService,
       combined.throwIfAborted();
       return result;
     } catch (error) {
+      const reason = verification.signal.reason ?? session.controller.signal.reason;
+      if (reason instanceof AuthError) throw reason;
       if (session.controller.signal.aborted || this.sessions.get(senderId) !== session) {
         throw new AuthError('AUTH_REQUIRED', '登录已失效，任务已取消');
       }

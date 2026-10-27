@@ -1,4 +1,5 @@
 import { KeywordTag, KnowledgeDocument, ParsedVideoInfo } from '../types';
+import { getEditableSourceText, getSourceKeywords, isImageTextContent } from './extractedContent';
 
 export interface BuildPromptInput {
   videoInfo: ParsedVideoInfo;
@@ -75,14 +76,20 @@ export function buildUserPrompt(input: BuildPromptInput): string {
           .join('\n\n')
       : '（当前未启用额外本地知识库文档，请以本公司主营业务概述与核心业务关键词为准）';
 
+  const imageTextContent = isImageTextContent(videoInfo);
+  const sourceLabel = imageTextContent ? '图文' : '视频';
   const lines: string[] = [
-    `请基于以下【原热点视频提取/人工修订内容】与【本公司业务及本地知识库配置】，生成商业二创分镜脚本：`,
+    `请基于以下【原热点${sourceLabel}提取/人工修订内容】与【本公司业务及本地知识库配置】，生成商业二创分镜脚本：`,
     ``,
-    `================ 一、原热点视频信息（借势源） ================`,
-    `1. 原视频来源平台：${videoInfo.platform === 'douyin' ? '抖音' : '小红书'}`,
-    `2. 生效的原视频口播文案（含人工修订）：${editedTranscript || videoInfo.transcript}`,
+    `================ 一、原热点${sourceLabel}信息（借势源） ================`,
+    `1. 原${sourceLabel}来源平台：${videoInfo.platform === 'douyin' ? '抖音' : '小红书'}`,
+    `2. 生效的${imageTextContent ? '图文素材' : '原视频口播'}文案（含人工修订）：${editedTranscript || getEditableSourceText(videoInfo)}`,
     `3. 生效的原片画面与镜头概述（含人工修订）：${editedVisualSummary || '未提供画面描述'}`,
-    ...(videoInfo.publishedText ? [`原视频发布文案（仅作背景，以人工修订后的口播为准）：${videoInfo.publishedText}`] : []),
+    ...(videoInfo.publishedText ? [imageTextContent
+      ? `原图文发布正文（原文保留，以人工修订后的素材为准）：${videoInfo.publishedText}`
+      : `原视频发布文案（仅作背景，以人工修订后的口播为准）：${videoInfo.publishedText}`] : []),
+    ...(imageTextContent && getSourceKeywords(videoInfo).length
+      ? [`原素材关键词（来自原帖标签）：${getSourceKeywords(videoInfo).join('、')}`] : []),
     ``,
     `================ 二、本公司主营业务与关键词约束 ================`,
     `4. 本公司主营业务概述：${companyBusinessProfile || '精品冷萃咖啡液与办公室便携冲调饮品'}`,

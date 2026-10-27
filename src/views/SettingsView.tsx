@@ -288,19 +288,7 @@ export function SettingsView() {
                 <h2 id="provider-title" className="section-title">
                   接口密钥与内容提取
                 </h2>
-                <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 accent-primary"
-                    checked={settings.enableMockFallback}
-                    onChange={(event) => updateSettings({ enableMockFallback: event.target.checked })}
-                  />
-                  启用仿真模式<span className="sr-only">（使用示例数据，不调用真实接口）</span>
-                </label>
               </div>
-              {settings.enableMockFallback && (
-                <p className="status-note">演示模式使用示例数据。调用真实接口前，请关闭此开关。</p>
-              )}
               <ProviderSettingsForm />
             </section>
             <details className="disclosure bg-card">
