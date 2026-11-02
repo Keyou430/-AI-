@@ -1,0 +1,77 @@
+{
+  "date": "2026-10-29",
+  "scope": "通用 API 设置与 Seedream 当前源码；未打包",
+  "supplier": "isolated fixtures",
+  "commands": [
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    {
+      "command": "node --import tsx --test --test-concurrency=2 --test-timeout=30000 tests/*.test.ts",
+      "exitCode": 0,
+      "tests": 169,
+      "passed": 169
+    },
+    {
+      "command": "npm run build",
+      "exitCode": 0
+    },
+    {
+      "command": "electron scripts/providerSettingsSmoke.cjs",
+      "exitCode": 0,
+      "cases": 13,
+      "requests": 6
+    },
+    {
+      "command": "npm run smoke:persistence",
+      "exitCode": 0,
+      "phases": [
+        "seed",
+        "edit",
+        "verify",
+        "linkdigest",
+        "review",
+        "fresh"
+      ]
+    },
+    {
+      "command": "electron scripts/imageTextRegression.cjs",
+      "exitCode": 0,
+      "layoutCases": 39,
+      "defectCases": "F01–F05"
+    },
+    {
+      "command": "git diff --check",
+      "exitCode": 0
+    }
+  ],
+  "nonPassingAttempt": {
+    "command": "npm test",
+    "exitCode": 1,
+    "passed": 168,
+    "failed": 1,
+    "reason": "既有 remoteAuthNetwork fixture 初始化登录触发 200ms 超时，服务器未清理造成进程未退出；受控重跑全部通过"
+  },
+  "commercialCalls": 0,
+  "productionDataAccessed": false,
+  "newInstaller": false,
+  "sourceSha256": {
+    "electron/main.ts": "6a3edba519b4e7840807c4c1e2fd1c4e02799eb76fc3cbef55f7ec0f42112a8b",
+    "electron/preload.ts": "d99a9c1b9d6bc04e14e614812c7e58d7229735cc236e5c08a90bd14fb8d9c674",
+    "electron/services/providerTypes.ts": "f3d4f5e5b52217bfa84b4637bebf1ce652ba66ccca21e1b40b937f509c65d64a",
+    "electron/services/providerConfig.ts": "8af739634ae516d885a30f344a2470996e2862b8d32364adb6ed72c0d06962db",
+    "electron/services/localProviderService.ts": "56c8950b1bb4b7e157b870e5e044f8a2a4f4ecee4cd72c1ca15c08f3bfe71dc1",
+    "electron/services/providerConnectionTest.ts": "7c6260f5a8ee9d7e1629155dae41412a2c42abe6ef8c75f13d1d2d1a7b732beb",
+    "electron/services/imageGenerationService.ts": "0814a890c0ae98f56918bfaea9e9d45e7c0fbd511b8074a14d13caa9014f4ca5",
+    "electron/services/agnesImageService.ts": "cf36a83196f1999f19c3d1189497e1ef21d1a0293323d180a435494ccaaaf71a",
+    "electron/services/imageTextIpc.ts": "928e5192bd9cd6429b3772a7d117ed7be9a6e3f64e19f19420f7b58d717fd1ab",
+    "electron/services/imageTextModel.ts": "3c42b8d61e9d13813db0f3f8a3f011c079fc1dc67fae1a6aa31494beab28cf33",
+    "electron/services/videoParser.ts": "9477529b70a3a6e4947b54d54b4c677af4aa1cad1cc103fa29b9e9e9374511c4",
+    "electron/services/linkDigestProvider.ts": "b0733fa4e04f656cdfad356f90083466eb0ccabec2c83320abfb10dc9e2fcdf2",
+    "src/components/ProviderSettingsForm.tsx": "47cacc576285d31c5e13ccee386f916044af72d6b501ae651735e0bd5fba6d08",
+    "src/views/SettingsView.tsx": "7559a2ad7d537e30eb5b9836a8e3b801b80e5c8bd2371734351e3f4ffc831b65",
+    "src/services/ipcClient.ts": "24e265bef0606697e75ad9d3be3eb94c43487b393ed5be3c81088c63801984f6",
+    "src/store/useImageTextStore.ts": "e20eb8a4c4c479d3108a5db1191331e6bb070c8e5d49a3b4b9aa140c0ae8f023"
+  }
+}

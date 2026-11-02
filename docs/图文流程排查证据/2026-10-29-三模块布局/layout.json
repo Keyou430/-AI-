@@ -1,0 +1,1131 @@
+{
+  "date": "2026-10-29",
+  "version": "1.0.18",
+  "packaged": false,
+  "supplier": "isolated fixtures",
+  "cases": [
+    {
+      "id": "R5-workbench-1366",
+      "status": "PASS",
+      "details": {
+        "panelHeight": 531.3333740234375,
+        "scrollHeight": 476,
+        "proportion": 0.8958594044179188,
+        "widthProportion": 0.5571010248901903
+      }
+    },
+    {
+      "id": "R5-workbench-1440",
+      "status": "PASS",
+      "details": {
+        "panelHeight": 723.3333740234375,
+        "scrollHeight": 668,
+        "proportion": 0.9235022521971389,
+        "widthProportion": 0.5644459194607205
+      }
+    },
+    {
+      "id": "R5-workbench-1920",
+      "status": "PASS",
+      "details": {
+        "panelHeight": 903.3333740234375,
+        "scrollHeight": 848,
+        "proportion": 0.9387453451686577,
+        "widthProportion": 0.6291666666666667
+      }
+    },
+    {
+      "id": "R5-history-video-1366",
+      "status": "PASS",
+      "details": {
+        "panelHeight": 667.3333740234375,
+        "scrollHeight": 555.8333740234375,
+        "proportion": 0.8329170931048265,
+        "widthProportion": 0.6105417276720352
+      }
+    },
+    {
+      "id": "R5-history-video-1440",
+      "status": "PASS",
+      "details": {
+        "panelHeight": 799.3333740234375,
+        "scrollHeight": 687.8333740234375,
+        "proportion": 0.8605087643985566,
+        "widthProportion": 0.6302228291829427
+      }
+    },
+    {
+      "id": "R5-history-video-1920",
+      "status": "PASS",
+      "details": {
+        "panelHeight": 979.3333740234375,
+        "scrollHeight": 867.8333740234375,
+        "proportion": 0.8861470435323574,
+        "widthProportion": 0.6916666666666667
+      }
+    },
+    {
+      "id": "R4-video-tools",
+      "status": "PASS",
+      "details": {
+        "tabs": true,
+        "shotPagination": true,
+        "copy": true,
+        "txt": true,
+        "doc": true
+      }
+    },
+    {
+      "id": "R2-blank-1366",
+      "status": "PASS",
+      "details": {
+        "panels": true,
+        "disabledTabs": true,
+        "noConfirm": true,
+        "noPagination": true,
+        "linkEnabled": true,
+        "noOverflow": true
+      }
+    },
+    {
+      "id": "R2-blank-1920",
+      "status": "PASS",
+      "details": {
+        "panels": true,
+        "disabledTabs": true,
+        "noConfirm": true,
+        "noPagination": true,
+        "linkEnabled": true,
+        "noOverflow": true
+      }
+    },
+    {
+      "id": "R2-blank-390",
+      "status": "PASS",
+      "details": {
+        "panels": true,
+        "disabledTabs": true,
+        "noConfirm": true,
+        "noPagination": true,
+        "linkEnabled": true,
+        "noOverflow": true
+      }
+    },
+    {
+      "id": "L01-1366",
+      "status": "PASS",
+      "details": {
+        "width": 1366,
+        "height": 768,
+        "scrollHeight": 768,
+        "scrollWidth": 1366,
+        "confirm": {
+          "x": 252.6666717529297,
+          "y": 699.3333740234375,
+          "width": 307.66668701171875,
+          "height": 44,
+          "right": 560.3333587646484,
+          "bottom": 743.3333740234375,
+          "visible": true
+        },
+        "pagination": {
+          "x": 601.6666870117188,
+          "y": 549.3333740234375,
+          "width": 735.6666870117188,
+          "height": 37.333335876464844,
+          "right": 1337.3333740234375,
+          "bottom": 586.6667098999023,
+          "visible": true
+        },
+        "preview": {
+          "x": 601.6666870117188,
+          "y": 126.83333587646484,
+          "width": 735.6666870117188,
+          "height": 410.5,
+          "right": 1337.3333740234375,
+          "bottom": 537.3333358764648,
+          "visible": true
+        },
+        "previous": {
+          "x": 821.1666870117188,
+          "y": 550,
+          "width": 85.33333587646484,
+          "height": 36,
+          "right": 906.5000228881836,
+          "bottom": 586,
+          "visible": true
+        },
+        "next": {
+          "x": 1032.5,
+          "y": 550,
+          "width": 85.33333587646484,
+          "height": 36,
+          "right": 1117.8333358764648,
+          "bottom": 586,
+          "visible": true
+        },
+        "text": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "right": 0,
+          "bottom": 0,
+          "visible": false
+        },
+        "visual": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "right": 0,
+          "bottom": 0,
+          "visible": false
+        },
+        "retry": null,
+        "cancel": null,
+        "progress": null,
+        "selectedTab": "文案",
+        "left": {
+          "panelHeight": 674,
+          "scrollHeight": 465.3333435058594,
+          "proportion": 0.6904055541629961,
+          "widthProportion": 0.24377745241581258
+        }
+      }
+    },
+    {
+      "id": "L01-1440",
+      "status": "PASS",
+      "details": {
+        "width": 1440,
+        "height": 900,
+        "scrollHeight": 900,
+        "scrollWidth": 1440,
+        "confirm": {
+          "x": 252.6666717529297,
+          "y": 831.3333740234375,
+          "width": 329.8645935058594,
+          "height": 44,
+          "right": 582.5312652587891,
+          "bottom": 875.3333740234375,
+          "visible": true
+        },
+        "pagination": {
+          "x": 623.8646240234375,
+          "y": 834,
+          "width": 453.8020935058594,
+          "height": 37.333335876464844,
+          "right": 1077.6667175292969,
+          "bottom": 871.3333358764648,
+          "visible": true
+        },
+        "preview": {
+          "x": 623.8646240234375,
+          "y": 126.83333587646484,
+          "width": 453.8020935058594,
+          "height": 695.1666870117188,
+          "right": 1077.6667175292969,
+          "bottom": 822.0000228881836,
+          "visible": true
+        },
+        "previous": {
+          "x": 702.4271240234375,
+          "y": 834.6666870117188,
+          "width": 85.33333587646484,
+          "height": 36,
+          "right": 787.7604598999023,
+          "bottom": 870.6666870117188,
+          "visible": true
+        },
+        "next": {
+          "x": 913.7604370117188,
+          "y": 834.6666870117188,
+          "width": 85.33333587646484,
+          "height": 36,
+          "right": 999.0937728881836,
+          "bottom": 870.6666870117188,
+          "visible": true
+        },
+        "text": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "right": 0,
+          "bottom": 0,
+          "visible": false
+        },
+        "visual": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "right": 0,
+          "bottom": 0,
+          "visible": false
+        },
+        "retry": null,
+        "cancel": null,
+        "progress": null,
+        "selectedTab": "文案",
+        "left": {
+          "panelHeight": 806,
+          "scrollHeight": 597.3333740234375,
+          "proportion": 0.74110840449558,
+          "widthProportion": 0.2466652340359158
+        }
+      }
+    },
+    {
+      "id": "L01-1920",
+      "status": "PASS",
+      "details": {
+        "width": 1920,
+        "height": 1080,
+        "scrollHeight": 1080,
+        "scrollWidth": 1920,
+        "confirm": {
+          "x": 252.6666717529297,
+          "y": 1011.3333740234375,
+          "width": 414.66668701171875,
+          "height": 44,
+          "right": 667.3333587646484,
+          "bottom": 1055.3333740234375,
+          "visible": true
+        },
+        "pagination": {
+          "x": 708.6666870117188,
+          "y": 1014,
+          "width": 686.2708740234375,
+          "height": 37.333335876464844,
+          "right": 1394.9375610351562,
+          "bottom": 1051.3333358764648,
+          "visible": true
+        },
+        "preview": {
+          "x": 708.6666870117188,
+          "y": 126.83333587646484,
+          "width": 686.2708740234375,
+          "height": 875.1666870117188,
+          "right": 1394.9375610351562,
+          "bottom": 1002.0000228881836,
+          "visible": true
+        },
+        "previous": {
+          "x": 903.46875,
+          "y": 1014.6666870117188,
+          "width": 85.33333587646484,
+          "height": 36,
+          "right": 988.8020858764648,
+          "bottom": 1050.6666870117188,
+          "visible": true
+        },
+        "next": {
+          "x": 1114.8021240234375,
+          "y": 1014.6666870117188,
+          "width": 85.33333587646484,
+          "height": 36,
+          "right": 1200.1354598999023,
+          "bottom": 1050.6666870117188,
+          "visible": true
+        },
+        "text": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "right": 0,
+          "bottom": 0,
+          "visible": false
+        },
+        "visual": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "right": 0,
+          "bottom": 0,
+          "visible": false
+        },
+        "retry": null,
+        "cancel": null,
+        "progress": null,
+        "selectedTab": "文案",
+        "left": {
+          "panelHeight": 986,
+          "scrollHeight": 777.3333740234375,
+          "proportion": 0.7883705618898961,
+          "widthProportion": 0.22916666666666666
+        }
+      }
+    },
+    {
+      "id": "U01-header",
+      "status": "PASS",
+      "details": {
+        "titleY": 30.666667938232422,
+        "linkY": 30.666667938232422,
+        "rowHeight": 37,
+        "inputHeight": 37.333335876464844,
+        "inputTag": "INPUT",
+        "linkLength": 1254,
+        "inputScroll": 8126
+      }
+    },
+    {
+      "id": "L02",
+      "status": "PASS",
+      "details": {
+        "uncommittedTagsRetained": true,
+        "activePageEditingLinked": true,
+        "pageSwitchRetainsEdits": true,
+        "pageSwitchDoesNotChangeTab": true,
+        "tabScrollResets": true
+      }
+    },
+    {
+      "id": "R3-keyboard",
+      "status": "PASS",
+      "details": {
+        "previous": true,
+        "next": true,
+        "inputIgnored": true,
+        "ungeneratedTextVisible": true
+      }
+    },
+    {
+      "id": "U06-insert-before",
+      "status": "PASS",
+      "details": {
+        "ids": [
+          "d6625ddc-958b-43fa-9dd7-a9b291bb8337",
+          "f798918d-f54e-457d-b58c-0a4fc04c663c",
+          "9b764ca4-fbec-4ae7-a875-874285d58b5f"
+        ],
+        "selected": "f798918d-f54e-457d-b58c-0a4fc04c663c",
+        "index": 1
+      }
+    },
+    {
+      "id": "U05-page-action-row",
+      "status": "PASS",
+      "details": {
+        "headingY": 214,
+        "buttonYs": [
+          214,
+          214
+        ],
+        "labels": [
+          "增加一图",
+          "删除当前图"
+        ],
+        "rowFits": true
+      }
+    },
+    {
+      "id": "L03",
+      "status": "PASS",
+      "details": {
+        "sixPageControlsInViewport": true,
+        "wholePageScrollNotRequired": true
+      }
+    },
+    {
+      "id": "R3-single-page",
+      "status": "PASS",
+      "details": {
+        "paginationHidden": true,
+        "restoredMultiPage": true
+      }
+    },
+    {
+      "id": "L04",
+      "status": "PASS",
+      "details": {
+        "planTabs": [
+          "文案",
+          "逐图",
+          "风格",
+          "素材 0"
+        ],
+        "automaticReviewPanelRemoved": true,
+        "structureDisclosureRemoved": true
+      }
+    },
+    {
+      "id": "L05",
+      "status": "PASS",
+      "details": {
+        "width": 390,
+        "height": 844,
+        "scrollHeight": 844,
+        "scrollWidth": 390,
+        "confirm": {
+          "x": 24.666667938232422,
+          "y": 779.3333740234375,
+          "width": 340.66668701171875,
+          "height": 44,
+          "right": 365.3333549499512,
+          "bottom": 823.3333740234375,
+          "visible": true
+        },
+        "pagination": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "right": 0,
+          "bottom": 0,
+          "visible": false
+        },
+        "preview": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "right": 0,
+          "bottom": 0,
+          "visible": false
+        },
+        "previous": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "right": 0,
+          "bottom": 0,
+          "visible": false
+        },
+        "next": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "right": 0,
+          "bottom": 0,
+          "visible": false
+        },
+        "text": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "right": 0,
+          "bottom": 0,
+          "visible": false
+        },
+        "visual": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "right": 0,
+          "bottom": 0,
+          "visible": false
+        },
+        "retry": null,
+        "cancel": null,
+        "progress": null,
+        "selectedTab": "文案",
+        "mobilePanelsSwitch": true
+      }
+    },
+    {
+      "id": "L06",
+      "status": "PASS",
+      "details": {
+        "desktop": {
+          "width": 1366,
+          "height": 768,
+          "scrollHeight": 768,
+          "scrollWidth": 1366,
+          "confirm": null,
+          "pagination": {
+            "x": 601.6666870117188,
+            "y": 549.3333740234375,
+            "width": 735.6666870117188,
+            "height": 37.333335876464844,
+            "right": 1337.3333740234375,
+            "bottom": 586.6667098999023,
+            "visible": true
+          },
+          "preview": {
+            "x": 601.6666870117188,
+            "y": 251.33334350585938,
+            "width": 735.6666870117188,
+            "height": 286,
+            "right": 1337.3333740234375,
+            "bottom": 537.3333435058594,
+            "visible": true
+          },
+          "previous": {
+            "x": 821.1666870117188,
+            "y": 550,
+            "width": 85.33333587646484,
+            "height": 36,
+            "right": 906.5000228881836,
+            "bottom": 586,
+            "visible": true
+          },
+          "next": {
+            "x": 1032.5,
+            "y": 550,
+            "width": 85.33333587646484,
+            "height": 36,
+            "right": 1117.8333358764648,
+            "bottom": 586,
+            "visible": true
+          },
+          "text": null,
+          "visual": null,
+          "retry": {
+            "x": 248,
+            "y": 121.33333587646484,
+            "width": 170.39584350585938,
+            "height": 36,
+            "right": 418.3958435058594,
+            "bottom": 157.33333587646484,
+            "visible": true
+          },
+          "cancel": {
+            "x": 1256.666748046875,
+            "y": 67.33333587646484,
+            "width": 73.33333587646484,
+            "height": 36,
+            "right": 1330.0000839233398,
+            "bottom": 103.33333587646484,
+            "visible": true
+          },
+          "progress": {
+            "x": 248,
+            "y": 57.333335876464844,
+            "width": 1094,
+            "height": 56,
+            "right": 1342,
+            "bottom": 113.33333587646484,
+            "visible": true
+          },
+          "selectedTab": "发布文案"
+        },
+        "mobile": {
+          "width": 390,
+          "height": 844,
+          "scrollHeight": 844,
+          "scrollWidth": 390,
+          "confirm": null,
+          "pagination": {
+            "x": 24.666667938232422,
+            "y": 625.3333740234375,
+            "width": 340.66668701171875,
+            "height": 39.333335876464844,
+            "right": 365.3333549499512,
+            "bottom": 664.6667098999023,
+            "visible": true
+          },
+          "preview": {
+            "x": 24.666667938232422,
+            "y": 362,
+            "width": 340.66668701171875,
+            "height": 251.33334350585938,
+            "right": 365.3333549499512,
+            "bottom": 613.3333435058594,
+            "visible": true
+          },
+          "previous": {
+            "x": 42,
+            "y": 627,
+            "width": 85.33333587646484,
+            "height": 36,
+            "right": 127.33333587646484,
+            "bottom": 663,
+            "visible": true
+          },
+          "next": {
+            "x": 262.66668701171875,
+            "y": 627,
+            "width": 85.33333587646484,
+            "height": 36,
+            "right": 348.0000228881836,
+            "bottom": 663,
+            "visible": true
+          },
+          "text": null,
+          "visual": null,
+          "retry": {
+            "x": 16,
+            "y": 183.33334350585938,
+            "width": 170.39584350585938,
+            "height": 36,
+            "right": 186.39584350585938,
+            "bottom": 219.33334350585938,
+            "visible": true
+          },
+          "cancel": {
+            "x": 288.66668701171875,
+            "y": 129.33334350585938,
+            "width": 73.33333587646484,
+            "height": 36,
+            "right": 362.0000228881836,
+            "bottom": 165.33334350585938,
+            "visible": true
+          },
+          "progress": {
+            "x": 16,
+            "y": 119.33333587646484,
+            "width": 358,
+            "height": 56,
+            "right": 374,
+            "bottom": 175.33333587646484,
+            "visible": true
+          },
+          "selectedTab": "发布文案"
+        },
+        "autoSwitchesToResult": true,
+        "busySpinnerVisible": true,
+        "cancelRemainsVisibleAfterScroll": true
+      }
+    },
+    {
+      "id": "L07-1366",
+      "status": "PASS",
+      "details": {
+        "width": 1366,
+        "height": 768,
+        "scrollHeight": 768,
+        "scrollWidth": 1366,
+        "confirm": null,
+        "pagination": {
+          "x": 601.6666870117188,
+          "y": 549.3333740234375,
+          "width": 735.6666870117188,
+          "height": 37.333335876464844,
+          "right": 1337.3333740234375,
+          "bottom": 586.6667098999023,
+          "visible": true
+        },
+        "preview": {
+          "x": 601.6666870117188,
+          "y": 143.33334350585938,
+          "width": 735.6666870117188,
+          "height": 394,
+          "right": 1337.3333740234375,
+          "bottom": 537.3333435058594,
+          "visible": true
+        },
+        "previous": {
+          "x": 821.1666870117188,
+          "y": 550,
+          "width": 85.33333587646484,
+          "height": 36,
+          "right": 906.5000228881836,
+          "bottom": 586,
+          "visible": true
+        },
+        "next": {
+          "x": 1032.5,
+          "y": 550,
+          "width": 85.33333587646484,
+          "height": 36,
+          "right": 1117.8333358764648,
+          "bottom": 586,
+          "visible": true
+        },
+        "text": null,
+        "visual": null,
+        "retry": null,
+        "cancel": null,
+        "progress": null,
+        "selectedTab": "发布文案"
+      }
+    },
+    {
+      "id": "L07-1440",
+      "status": "PASS",
+      "details": {
+        "width": 1440,
+        "height": 900,
+        "scrollHeight": 900,
+        "scrollWidth": 1440,
+        "confirm": null,
+        "pagination": {
+          "x": 623.8646240234375,
+          "y": 834,
+          "width": 453.8020935058594,
+          "height": 37.333335876464844,
+          "right": 1077.6667175292969,
+          "bottom": 871.3333358764648,
+          "visible": true
+        },
+        "preview": {
+          "x": 623.8646240234375,
+          "y": 143.33334350585938,
+          "width": 453.8020935058594,
+          "height": 678.6666870117188,
+          "right": 1077.6667175292969,
+          "bottom": 822.0000305175781,
+          "visible": true
+        },
+        "previous": {
+          "x": 702.4271240234375,
+          "y": 834.6666870117188,
+          "width": 85.33333587646484,
+          "height": 36,
+          "right": 787.7604598999023,
+          "bottom": 870.6666870117188,
+          "visible": true
+        },
+        "next": {
+          "x": 913.7604370117188,
+          "y": 834.6666870117188,
+          "width": 85.33333587646484,
+          "height": 36,
+          "right": 999.0937728881836,
+          "bottom": 870.6666870117188,
+          "visible": true
+        },
+        "text": null,
+        "visual": null,
+        "retry": null,
+        "cancel": null,
+        "progress": null,
+        "selectedTab": "发布文案"
+      }
+    },
+    {
+      "id": "L07-1920",
+      "status": "PASS",
+      "details": {
+        "width": 1920,
+        "height": 1080,
+        "scrollHeight": 1080,
+        "scrollWidth": 1920,
+        "confirm": null,
+        "pagination": {
+          "x": 708.6666870117188,
+          "y": 1014,
+          "width": 686.2708740234375,
+          "height": 37.333335876464844,
+          "right": 1394.9375610351562,
+          "bottom": 1051.3333358764648,
+          "visible": true
+        },
+        "preview": {
+          "x": 708.6666870117188,
+          "y": 143.33334350585938,
+          "width": 686.2708740234375,
+          "height": 858.6666870117188,
+          "right": 1394.9375610351562,
+          "bottom": 1002.0000305175781,
+          "visible": true
+        },
+        "previous": {
+          "x": 903.46875,
+          "y": 1014.6666870117188,
+          "width": 85.33333587646484,
+          "height": 36,
+          "right": 988.8020858764648,
+          "bottom": 1050.6666870117188,
+          "visible": true
+        },
+        "next": {
+          "x": 1114.8021240234375,
+          "y": 1014.6666870117188,
+          "width": 85.33333587646484,
+          "height": 36,
+          "right": 1200.1354598999023,
+          "bottom": 1050.6666870117188,
+          "visible": true
+        },
+        "text": null,
+        "visual": null,
+        "retry": null,
+        "cancel": null,
+        "progress": null,
+        "selectedTab": "发布文案"
+      }
+    },
+    {
+      "id": "L07-390",
+      "status": "PASS",
+      "details": {
+        "width": 390,
+        "height": 844,
+        "scrollHeight": 844,
+        "scrollWidth": 390,
+        "confirm": null,
+        "pagination": {
+          "x": 24.666667938232422,
+          "y": 625.3333740234375,
+          "width": 340.66668701171875,
+          "height": 39.333335876464844,
+          "right": 365.3333549499512,
+          "bottom": 664.6667098999023,
+          "visible": true
+        },
+        "preview": {
+          "x": 24.666667938232422,
+          "y": 254,
+          "width": 340.66668701171875,
+          "height": 359.3333435058594,
+          "right": 365.3333549499512,
+          "bottom": 613.3333435058594,
+          "visible": true
+        },
+        "previous": {
+          "x": 42,
+          "y": 627,
+          "width": 85.33333587646484,
+          "height": 36,
+          "right": 127.33333587646484,
+          "bottom": 663,
+          "visible": true
+        },
+        "next": {
+          "x": 262.66668701171875,
+          "y": 627,
+          "width": 85.33333587646484,
+          "height": 36,
+          "right": 348.0000228881836,
+          "bottom": 663,
+          "visible": true
+        },
+        "text": null,
+        "visual": null,
+        "retry": null,
+        "cancel": null,
+        "progress": null,
+        "selectedTab": "发布文案"
+      }
+    },
+    {
+      "id": "U02-version-position",
+      "status": "PASS",
+      "details": {
+        "versionAfterDescription": true,
+        "reviewAfterVersion": true,
+        "imageColumnHasNoVersion": true
+      }
+    },
+    {
+      "id": "U03-edit-publication",
+      "status": "PASS",
+      "details": {
+        "editableTitleBodyTags": true,
+        "copiedLatestTagsWithoutBlur": true,
+        "savedAndReopened": true,
+        "imageCallsUnchanged": 2,
+        "duplicateCopyRemoved": true
+      }
+    },
+    {
+      "id": "U08-history-fixed-1366",
+      "status": "PASS",
+      "details": {
+        "imageOverflow": "hidden",
+        "textOverflow": "auto",
+        "textScrolled": true,
+        "columnHeight": 550,
+        "previewHeight": 499,
+        "pagerHeight": 37,
+        "imageHeight": 499,
+        "objectFit": "contain",
+        "fixedAfterTextScroll": true,
+        "imageColumnNoScroll": true,
+        "pagerAtBottom": true
+      }
+    },
+    {
+      "id": "R5-history-image-1366",
+      "status": "PASS",
+      "details": {
+        "panelHeight": 667.3333740234375,
+        "scrollHeight": 573.6666870117188,
+        "proportion": 0.8596403377115842,
+        "widthProportion": 0.6105417276720352,
+        "width": 833,
+        "sideBySide": true,
+        "stacked": false,
+        "pagination": {
+          "x": 528.6666870117188,
+          "y": 702,
+          "width": 466.2708435058594,
+          "height": 37.333335876464844,
+          "right": 994.9375305175781,
+          "bottom": 739.3333358764648,
+          "visible": true
+        },
+        "preview": {
+          "x": 528.6666870117188,
+          "y": 189.6666717529297,
+          "width": 466.2708435058594,
+          "height": 500.3333435058594,
+          "right": 994.9375305175781,
+          "bottom": 690.0000152587891,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "U08-history-fixed-1440",
+      "status": "PASS",
+      "details": {
+        "imageOverflow": "hidden",
+        "textOverflow": "auto",
+        "textScrolled": true,
+        "columnHeight": 682,
+        "previewHeight": 631,
+        "pagerHeight": 37,
+        "imageHeight": 631,
+        "objectFit": "contain",
+        "fixedAfterTextScroll": true,
+        "imageColumnNoScroll": true,
+        "pagerAtBottom": true
+      }
+    },
+    {
+      "id": "R5-history-image-1440",
+      "status": "PASS",
+      "details": {
+        "panelHeight": 799.3333740234375,
+        "scrollHeight": 705.6666870117188,
+        "proportion": 0.8828189963591182,
+        "widthProportion": 0.6302228291829427,
+        "width": 906,
+        "sideBySide": true,
+        "stacked": false,
+        "pagination": {
+          "x": 529.1458740234375,
+          "y": 834,
+          "width": 509.5208435058594,
+          "height": 37.333335876464844,
+          "right": 1038.6667175292969,
+          "bottom": 871.3333358764648,
+          "visible": true
+        },
+        "preview": {
+          "x": 529.1458740234375,
+          "y": 189.6666717529297,
+          "width": 509.5208435058594,
+          "height": 632.3333740234375,
+          "right": 1038.6667175292969,
+          "bottom": 822.0000457763672,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "U08-history-fixed-1920",
+      "status": "PASS",
+      "details": {
+        "imageOverflow": "hidden",
+        "textOverflow": "auto",
+        "textScrolled": true,
+        "columnHeight": 862,
+        "previewHeight": 811,
+        "pagerHeight": 37,
+        "imageHeight": 811,
+        "objectFit": "contain",
+        "fixedAfterTextScroll": true,
+        "imageColumnNoScroll": true,
+        "pagerAtBottom": true
+      }
+    },
+    {
+      "id": "R5-history-image-1920",
+      "status": "PASS",
+      "details": {
+        "panelHeight": 979.3333740234375,
+        "scrollHeight": 885.6666870117188,
+        "proportion": 0.9043566884411344,
+        "widthProportion": 0.6916666666666667,
+        "width": 1327,
+        "sideBySide": true,
+        "stacked": false,
+        "pagination": {
+          "x": 588.6666870117188,
+          "y": 1014,
+          "width": 756.8541870117188,
+          "height": 37.333335876464844,
+          "right": 1345.5208740234375,
+          "bottom": 1051.3333358764648,
+          "visible": true
+        },
+        "preview": {
+          "x": 588.6666870117188,
+          "y": 189.6666717529297,
+          "width": 756.8541870117188,
+          "height": 812.3333740234375,
+          "right": 1345.5208740234375,
+          "bottom": 1002.0000457763672,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "U08-history-fixed-390",
+      "status": "PASS",
+      "details": {
+        "imageOverflow": "hidden",
+        "textOverflow": "auto",
+        "textScrolled": true,
+        "columnHeight": 260,
+        "previewHeight": 207,
+        "pagerHeight": 39,
+        "imageHeight": 207,
+        "objectFit": "contain",
+        "fixedAfterTextScroll": true,
+        "imageColumnNoScroll": true,
+        "pagerAtBottom": true
+      }
+    },
+    {
+      "id": "R5-history-image-390",
+      "status": "PASS",
+      "details": {
+        "panelHeight": 695.3333740234375,
+        "scrollHeight": 517.6666870117188,
+        "proportion": 0.7444870422604939,
+        "widthProportion": 0.9384615384615385,
+        "width": 365,
+        "sideBySide": false,
+        "stacked": true,
+        "pagination": {
+          "x": 24.666667938232422,
+          "y": 545.8541870117188,
+          "width": 340.66668701171875,
+          "height": 39.333335876464844,
+          "right": 365.3333549499512,
+          "bottom": 585.1875228881836,
+          "visible": true
+        },
+        "preview": {
+          "x": 24.666667938232422,
+          "y": 325.66668701171875,
+          "width": 340.66668701171875,
+          "height": 208.1875,
+          "right": 365.3333549499512,
+          "bottom": 533.8541870117188,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "L08",
+      "status": "PASS",
+      "details": {
+        "historyPublicationPreserved": true,
+        "mobileBackToList": true
+      }
+    },
+    {
+      "id": "U04-check-logs",
+      "status": "PASS",
+      "details": {
+        "count": 453,
+        "structuredResultsOnly": true,
+        "automaticChecksHiddenFromUI": true
+      }
+    }
+  ]
+}

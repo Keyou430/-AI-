@@ -1,5 +1,6 @@
+import type { ImageTextAPI } from '../../electron/services/imageTextTypes';
 import type { StorageLocation } from '../../electron/services/storageLocation';
-import type { ProviderSettings, ProviderSettingsInput } from '../../electron/services/providerTypes';
+import type { ProviderModuleInput, ProviderTestResult, ProviderSettings, ProviderSettingsInput } from '../../electron/services/providerTypes';
 /**
  * 前端与 Electron 主进程通信桥接层 (完整覆盖 Phase 1 + Phase 2 + Phase 3)
  * - Phase 1: 短视频链接提取 + 大模型流式二创生成
@@ -20,11 +21,14 @@ import {
 
 declare global {
   interface Window {
-    electronAPI?: {
+    electronAPI?: ImageTextAPI & {
       getStorageLocation: () => Promise<{ success: boolean; location?: StorageLocation; error?: string }>;
       chooseStorageLocation: () => Promise<{ success: boolean; canceled?: boolean; location?: StorageLocation; error?: string }>;
       getProviderSettings: () => Promise<{ success: boolean; config?: ProviderSettings; error?: string }>;
+      resetProviderSettings: () => Promise<{ success: boolean; config?: ProviderSettings; error?: string }>;
       saveProviderSettings: (input: ProviderSettingsInput) => Promise<{ success: boolean; config?: ProviderSettings; error?: string }>;
+      saveProviderModule: (input: ProviderModuleInput) => Promise<{ success: boolean; config?: ProviderSettings; error?: string }>;
+      testProviderModule: (input: ProviderModuleInput & { rawInput?: string }) => Promise<ProviderTestResult>;
       getAuthStatus: () => Promise<{ needsSetup: boolean; user: AuthUser | null; mode?: 'local' | 'remote' }>;
       openLogFolder: () => Promise<{ success: boolean; error?: string }>;
       reportRuntimeError: (payload: { kind: 'error' | 'unhandled-rejection'; name?: string; stack?: string }) => Promise<{ success: boolean }>;
@@ -344,11 +348,8 @@ export async function testLLMConnectionClient(
   settings: AppSettings
 ): Promise<{ success: boolean; message: string }> {
   if (window.electronAPI) {
-    return await window.electronAPI.testLLMConnection({
-      apiKey: settings.llmApiKey,
-      baseURL: settings.llmBaseUrl,
-      model: settings.llmModel,
-    });
+    // 桌面端只测试本机已保存的配置，界面填写的值不会被主进程采用。
+    return await window.electronAPI.testLLMConnection({});
   }
 
   if (!settings.llmApiKey.trim()) {
@@ -411,13 +412,9 @@ export async function streamGenerateScriptClient(params: {
     });
 
     try {
+      // 模型地址、名称与密钥由主进程从本机加密配置读取，界面不再传递。
       const result = await window.electronAPI.generateScriptStream({
         requestId,
-        config: {
-          apiKey: params.settings.llmApiKey,
-          baseURL: params.settings.llmBaseUrl,
-          model: params.settings.llmModel,
-        },
         systemPrompt: params.systemPrompt,
         userPrompt: params.userPrompt,
         conversationHistory: params.conversationHistory,

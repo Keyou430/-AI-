@@ -45,3 +45,17 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TEXT NOT NULL,
   last_login_at TEXT
 );
+
+-- 独立图文稿件；图片二进制保存在业务存储目录 image-text-assets，稿件仅记录素材标识。
+CREATE TABLE IF NOT EXISTS image_text_records (
+  id TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL,
+  record_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_image_text_created_at ON image_text_records(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS image_text_page_versions (
+  id TEXT PRIMARY KEY, record_id TEXT NOT NULL, page_id TEXT NOT NULL, asset_id TEXT NOT NULL, version_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_image_text_versions_record ON image_text_page_versions(record_id);
+CREATE TABLE IF NOT EXISTS image_text_cleanup (id TEXT PRIMARY KEY, asset_ids_json TEXT NOT NULL);

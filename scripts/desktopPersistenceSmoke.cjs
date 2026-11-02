@@ -28,7 +28,7 @@ if (!process.versions.electron) {
       authentication: remote ? 'server' : 'local-test-only', serverBusinessRequests: 0, systemEncryption: true, processRestarts: 5, knowledgePersistence: true,
       sidebarStateAcrossProcessRestarts: true, keywordPersistence: true, apiKeyPersistence: true, updatesPersisted: true, directProviderRoutingWithFixture: true,
       parserProtocolPersistence: true, configurableRequestVerified: true,
-      aggregateProviderFixtureVerified: true, linkDigestAsyncFixtureVerified: true, linkDigestOcrOrderVerified: true, linkDigestBudgetPersistence: true, editedGenerationWithoutReextract: true, sourceSnapshotPersistence: true, partialTranscriptionWarning: true,
+      aggregateProviderFixtureVerified: true, linkDigestAsyncFixtureVerified: true, linkDigestOcrOrderVerified: true, linkDigestBudgetPersistence: true, editedGenerationWithoutReextract: true, sourceSnapshotPersistence: true, workbenchEmptyAcrossRestarts: true, linkClearedAcrossRestarts: true, legacyWorkbenchMigration: true, partialTranscriptionWarning: true,
       freshDeviceEmpty: true, plaintextKeysAbsent: true,
     }, null, 2) + '\n');
   } finally {
@@ -43,7 +43,7 @@ if (!process.versions.electron) {
   const directory = path.join(path.resolve(process.argv[3]), phase === 'fresh' ? 'fresh' : 'original');
   app.setPath('userData', directory);
   const password = process.env.REMIX_TEST_PASSWORD;
-  const empty = { llmBaseUrl: '', llmModel: '', videoParserEndpoint: '', llmKeyConfigured: false, videoKeyConfigured: false };
+  const empty = { imageProtocol: 'agnes', imageEndpoint: 'https://apihub.agnes-ai.com/v1/images/generations', imageModel: 'agnes-image-2.5-flash', imageKeyConfigured: false, llmBaseUrl: '', llmModel: '', videoParserEndpoint: '', llmKeyConfigured: false, videoKeyConfigured: false, agnesKeyConfigured: false, agnesModel: 'agnes-image-2.5-flash' };
   const key = 'PERSIST_TEST_MODEL_SECRET';
   const updatedKey = 'PERSIST_TEST_MODEL_UPDATED_SECRET';
   const videoKey = 'PERSIST_TEST_VIDEO_SECRET';
@@ -55,7 +55,7 @@ if (!process.versions.electron) {
     transcript:[{t:0,text:'LinkDigest 原始口播'},{t:2,text:'第二段口播'}],duration_seconds:18,read_seconds:18,
     images:[],ocr_text:['视频 OCR'],on_screen:[{t:2,text:'画面文字'}],key_points:['摘要不是原稿'],degraded:[],credits:3,cached:false,
     coverage:{seconds_transcribed:18,duration_seconds:18,images_read:0,images_total:0,not_captured:[]}};
-  const imageFixture = {...linkDigestFixture,platform:'xiaohongshu',transcript:[],duration_seconds:undefined,read_seconds:undefined,
+  const imageFixture = {...linkDigestFixture,platform:'xiaohongshu',title:'LinkDigest 图文',transcript:[],on_screen:[],ocr_text:[],duration_seconds:undefined,read_seconds:undefined,
     images:[{ocr:'第一张图片文字',description:'第一图'},null,{ocr:'第三张图片文字',description:'第三图'}],
     coverage:{images_read:2,images_total:3,not_captured:[]}};
   const originalFetch = globalThis.fetch;
@@ -103,6 +103,11 @@ if (!process.versions.electron) {
     if (address.hostname === 'api.deepseek.com') {
       assert.equal(new Headers(init?.headers).get('Authorization'), 'Bearer ' + updatedKey);
       const payload = JSON.parse(init.body); assert.equal(payload.model, 'deepseek-flash'); assert.equal(payload.stream, true);
+      if (payload.messages[0]?.content.includes('小红书图文策划师')) {
+        directModelCalls++;
+        const plan={title:'持久化图文策划',body:'配套发布正文',tags:['测试'],style:'简洁',notices:[],pages:[{id:'',text:'第一张图片文字',visual:'第一图',referenceIds:[]},{id:'',text:'第三张图片文字',visual:'第三图',referenceIds:[]}]};
+        return new Response('data: '+JSON.stringify({choices:[{delta:{content:JSON.stringify(plan)}}]})+'\n\ndata: [DONE]\n\n',{headers:{'Content-Type':'text/event-stream'}});
+      }
       assert.ok(payload.messages.some(message => (message.content.includes('聚合人工修改稿') && message.content.includes('聚合发布正文')) ||
         (message.content.includes('LinkDigest 人工修改稿') && message.content.includes('LinkDigest 发布正文')) ||
         (message.content.includes('第一张图片文字') && message.content.includes('第三张图片文字'))));
@@ -124,7 +129,7 @@ if (!process.versions.electron) {
       if (await window.webContents.executeJavaScript(expression)) return;
       await new Promise(resolve => setTimeout(resolve, 40));
     }
-    throw new Error('界面未达到预期状态：' + expression);
+    throw new Error('界面未达到预期状态：' + expression + '；界面反馈：' + await window.webContents.executeJavaScript('Array.from(document.querySelectorAll("[role=alert],header [role=status]")).map(el=>el.textContent).join(" | ")'));
   };
   app.on('browser-window-created', (_event, window) => {
     window.show = () => {};
@@ -144,6 +149,10 @@ if (!process.versions.electron) {
           await js('document.querySelector("[name=username]").value="admin"; document.querySelector("[name=password]").value=' + JSON.stringify(password) + '; document.querySelector("form").requestSubmit()');
         }
         await waitFor(window, 'Boolean(document.querySelector("[data-testid=editable-transcript]"))');
+        assert.equal(await window.webContents.executeJavaScript('document.querySelector("[name=sourceVideoUrl]").value'), '');
+        assert.equal(await window.webContents.executeJavaScript('document.querySelector("[data-testid=editable-transcript]").value'), '');
+        assert.equal(await window.webContents.executeJavaScript('document.querySelector("#visual-summary").value'), '');
+        assert.ok(await window.webContents.executeJavaScript('!!document.querySelector("[data-testid=script-empty]")'));
         assert.equal(await js('document.querySelector("aside").dataset.collapsed'), phase === 'edit' ? 'true' : 'false');
         if (phase === 'seed' || phase === 'edit') {
           await js('document.querySelector("aside button[aria-controls=desktop-navigation]").click()');
@@ -175,7 +184,7 @@ if (!process.versions.electron) {
             assert.equal(provider.publicSettings().videoParserProvider,'yaoan');
             const saved=(await call('listHistoryFromDB')).records.find(record=>record.originalTranscript==='聚合人工修改稿');
             assert.equal(saved.sourceContent.transcript,'聚合原始口播');
-            assert.equal((await storage()).parsedVideo.transcriptionStatus,'failed');
+            for (const key of ['linkInput','parsedVideo','editedTranscript','editedVisualSummary']) assert.equal(key in await storage(),false);
           }
           if(phase === 'review'){
             assert.equal(provider.publicSettings().videoParserProvider,'linkdigest');assert.equal(provider.publicSettings().linkDigestMaxCredits,7);
@@ -185,14 +194,18 @@ if (!process.versions.electron) {
             const saved=records.find(record=>record.originalTranscript==='LinkDigest 人工修改稿');
             assert.equal(saved.sourceContent.transcript,'LinkDigest 原始口播\n第二段口播');
             assert.equal(saved.sourceContent.extractionDetails.onScreen[0].text,'画面文字');
-            const imageRecord=records.find(record=>record.sourceContent?.extractionDetails?.images.length===3);
-            assert.equal(imageRecord.sourceContent.extractionDetails.images[1].ocr,'');
-            assert.equal(imageRecord.sourceContent.extractionDetails.images[2].ocr,'第三张图片文字');
-            assert.equal((await storage()).parsedVideo.extractionDetails.images.length,3);
-            assert.ok((await storage()).editedTranscript.includes('第三张图片文字'));
+            const imageRecord=(await call('listImageTextHistory')).data.find(record=>record.source?.extractionDetails?.images.length===3);
+            assert.equal(imageRecord.source.extractionDetails.images[1].ocr,'');
+            assert.equal(imageRecord.source.extractionDetails.images[2].ocr,'第三张图片文字');
+            for (const key of ['linkInput','parsedVideo','editedTranscript','editedVisualSummary']) assert.equal(key in await storage(),false);
             await js('document.querySelector("nav button[aria-label=历史记录]").click()');
             await waitFor(window,'document.querySelectorAll("[data-testid=history-record]").length > 0');
-            await js('Array.from(document.querySelectorAll("[role=tab]")).find(el=>el.textContent.includes("原稿对照")).click()');
+            await js('Array.from(document.querySelectorAll("[data-testid=history-record]")).find(el=>el.dataset.recordId==='+JSON.stringify(imageRecord.id)+').click()');
+            await js('Array.from(document.querySelectorAll("button")).find(el=>el.textContent.trim()==="重新编辑").click()');
+            await waitFor(window,'Boolean(document.querySelector("[data-testid=image-text-plan-scroll]"))');
+            await js('Array.from(document.querySelectorAll("[aria-label=图文编辑分页] [role=tab]")).find(el=>el.textContent.startsWith("素材")).click()');
+            await waitFor(window,'Array.from(document.querySelectorAll("#image-text-plan [role=tabpanel]:not([hidden]) summary")).some(el=>el.textContent==="原帖素材")');
+            await js('Array.from(document.querySelectorAll("#image-text-plan summary")).find(el=>el.textContent==="原帖素材").click()');
             await waitFor(window,'Boolean(document.querySelector("[data-testid=extraction-details]"))');
             assert.equal(await js('document.querySelectorAll("[data-testid=image-ocr]").length'),3);
             await js('document.querySelector("nav button[aria-label=设置]").click()');
@@ -224,7 +237,11 @@ if (!process.versions.electron) {
             await waitFor(window, '!!document.getElementsByName("videoParserOptions.apiKeyName")[0]');
             await js('{ const options = ' + JSON.stringify(parserOptions) + '; for (const name of ["apiKeyName", "urlField", "textPath", "titlePath", "timeoutSeconds"]) { const input = document.getElementsByName("videoParserOptions." + name)[0]; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(input, String(options[name])); input.dispatchEvent(new Event("input", { bubbles: true })); } }');
           }
-          await js('Array.from(document.querySelectorAll("form")).find(el => el.innerText.includes("保存本设备接口配置")).requestSubmit()');
+          for (const module of ['llm', 'extraction']) {
+            const selector = 'form[data-provider-module="' + module + '"]';
+            await js('document.querySelector(' + JSON.stringify(selector) + ').requestSubmit()');
+            await waitFor(window, 'document.querySelector(' + JSON.stringify(selector) + ').innerText.includes("本设备接口配置已加密保存") && !document.querySelector(' + JSON.stringify(selector + ' fieldset') + ').disabled');
+          }
           await waitFor(window, 'document.body.innerText.includes("本设备接口配置已加密保存")');
           assert.equal(await js('Array.from(document.querySelectorAll("input[type=password]")).every(el => el.value === "")'), true);
           if (phase === 'seed') {
@@ -242,10 +259,15 @@ if (!process.versions.electron) {
           assert.equal(directParserCalls, 1); assert.equal(directModelCalls, 2);
           // 通过设置页选择聚合预设与 DeepSeek，通过实际 IPC 调用接口和模型流。
           await js('Array.from(document.querySelectorAll("button")).find(el => el.textContent.includes("使用 DeepSeek 配置")).click()');
+          await js('{const input=document.getElementsByName("llmApiKey")[0];Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(input,' + JSON.stringify(updatedKey) + ');input.dispatchEvent(new Event("input",{bubbles:true}));}');
           await js('{ const select = document.getElementsByName("videoParserProvider")[0]; select.value="yaoan"; select.dispatchEvent(new Event("change",{bubbles:true})); }');
-          await waitFor(window, '!document.getElementsByName("videoParserEndpoint")[0]');
+          await waitFor(window, 'document.getElementsByName("videoParserEndpoint")[0]?.value === "https://cyanlis.cn"');
           await js('{ const input=document.getElementsByName("videoParserApiKey")[0]; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(input,' + JSON.stringify(videoKey) + '); input.dispatchEvent(new Event("input",{bubbles:true})); }');
-          await js('Array.from(document.querySelectorAll("form")).find(el => el.innerText.includes("保存本设备接口配置")).requestSubmit()');
+          for (const module of ['llm', 'extraction']) {
+            const selector = 'form[data-provider-module="' + module + '"]';
+            await js('document.querySelector(' + JSON.stringify(selector) + ').requestSubmit()');
+            await waitFor(window, 'document.querySelector(' + JSON.stringify(selector) + ').innerText.includes("本设备接口配置已加密保存") && !document.querySelector(' + JSON.stringify(selector + ' fieldset') + ').disabled');
+          }
           await waitFor(window, 'document.body.innerText.includes("本设备接口配置已加密保存")');
           assert.equal(provider.publicSettings().videoParserProvider,'yaoan');
           await js('document.querySelector("nav button[aria-label=二创工作台]").click()');
@@ -275,7 +297,11 @@ if (!process.versions.electron) {
           await js('{const select=document.getElementsByName("videoParserProvider")[0];select.value="linkdigest";select.dispatchEvent(new Event("change",{bubbles:true}));}');
           await waitFor(window,'Boolean(document.getElementsByName("linkDigestMaxCredits")[0])');
           await js('{for(const [name,value] of Object.entries({videoParserApiKey:' + JSON.stringify(videoKey) + ',linkDigestMaxCredits:"7"})){const input=document.getElementsByName(name)[0];Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(input,value);input.dispatchEvent(new Event("input",{bubbles:true}));}}');
-          await js('Array.from(document.querySelectorAll("form")).find(el=>el.innerText.includes("保存本设备接口配置")).requestSubmit()');
+          for (const module of ['llm', 'extraction']) {
+            const selector = 'form[data-provider-module="' + module + '"]';
+            await js('document.querySelector(' + JSON.stringify(selector) + ').requestSubmit()');
+            await waitFor(window, 'document.querySelector(' + JSON.stringify(selector) + ').innerText.includes("本设备接口配置已加密保存") && !document.querySelector(' + JSON.stringify(selector + ' fieldset') + ').disabled');
+          }
           await waitFor(window,'document.body.innerText.includes("本设备接口配置已加密保存")');
           assert.equal(provider.publicSettings().videoParserProvider,'linkdigest');
           await js('document.querySelector("nav button[aria-label=二创工作台]").click()');
@@ -293,14 +319,13 @@ if (!process.versions.electron) {
           await waitFor(window,'window.electronAPI.listHistoryFromDB().then(result=>result.records.some(record=>record.originalTranscript==="LinkDigest 人工修改稿"))');
           assert.equal(linkDigestPosts,1);assert.equal(directModelCalls,1);
           await extract('https://xhslink.cn/image-fixture/');
-          await waitFor(window,'document.querySelectorAll("[data-testid=image-ocr]").length === 3');
-          assert.ok(await js('document.querySelectorAll("[data-testid=extraction-warning]").length > 0'));
-          await js('document.querySelector("[data-testid=use-extracted-text]").click()');
-          await waitFor(window,'document.querySelector("[data-testid=editable-transcript]").value.includes("第三张图片文字")');
-          const draft=await js('document.querySelector("[data-testid=editable-transcript]").value');
-          assert.ok(draft.indexOf('第一张图片文字')<draft.indexOf('第三张图片文字'));
-          await js('document.querySelector("[data-testid=generate-script]").click()');
-          await waitFor(window,'window.electronAPI.listHistoryFromDB().then(result=>result.records.some(record=>record.sourceContent?.extractionDetails?.images.length===3))');
+          await waitFor(window,'document.body.innerText.includes("确认文案、张数及比例，开始生成 2 张图片")');
+          const draft=(await call('listImageTextHistory')).data[0];
+          assert.equal(draft.confirmed,false);
+          assert.equal(draft.source.extractionDetails.images.length,3);
+          assert.equal(draft.source.extractionDetails.images[1].ocr,'');
+          assert.equal(draft.source.extractionDetails.images[2].ocr,'第三张图片文字');
+          await js('document.querySelector("nav button[aria-label=二创工作台]").click()');
           assert.equal(linkDigestPosts,2);assert.equal(directModelCalls,2);
           await extract('https://v.douyin.com/blocked/');
           await waitFor(window,'document.body.innerText.includes("平台暂时拒绝 LinkDigest")');
@@ -317,6 +342,7 @@ if (!process.versions.electron) {
           }
           await call('logout');
           assert.equal(provider.publicSettings().llmKeyConfigured, true);
+          if (phase === 'seed') await js('(()=>{const key="video-remix-ai-full-v3-storage";const saved=JSON.parse(localStorage.getItem(key));saved.version=2;Object.assign(saved.state,{linkInput:"https://v.douyin.com/legacy/",parsedVideo:{title:"旧素材",transcript:"旧口播"},editedTranscript:"旧未生成修改",editedVisualSummary:"旧画面"});localStorage.setItem(key,JSON.stringify(saved));})()');
         }
         console.log('持久化桌面验收通过：' + phase);
         clearTimeout(timer); app.quit();

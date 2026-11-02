@@ -4,6 +4,7 @@ import { Tooltip } from '@base-ui/react/tooltip';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   Film,
+  Images,
   History,
   LogOut,
   Menu,
@@ -15,6 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
+import { useImageTextStore } from '../store/useImageTextStore';
 import { useAppStore } from '../store/useAppStore';
 import type { ActiveNavTab } from '../types';
 import { cn } from '../lib/utils';
@@ -23,7 +25,9 @@ import { Button } from './ui/Button';
 export function Sidebar() {
   const activeNav = useAppStore((state) => state.activeNav);
   const setActiveNav = useAppStore((state) => state.setActiveNav);
-  const historyCount = useAppStore((state) => state.historyRecords.length);
+  const videoHistoryCount = useAppStore((state) => state.historyRecords.length);
+  const imageHistoryCount = useImageTextStore((state) => state.records.length);
+  const historyCount = videoHistoryCount + imageHistoryCount;
   const sidebarCollapsed = useAppStore((state) => state.sidebarCollapsed);
   const setSidebarCollapsed = useAppStore((state) => state.setSidebarCollapsed);
   const { user, signOut } = useAuthStore();
@@ -49,6 +53,7 @@ export function Sidebar() {
   }, []);
   const items = [
     { id: 'workbench' as const, label: '二创工作台', icon: Sparkles },
+    { id: 'image-text' as const, label: '小红书图文', icon: Images },
     { id: 'history' as const, label: '历史记录', icon: History },
     { id: 'settings' as const, label: '设置', icon: Settings },
     ...(user?.role === 'admin'

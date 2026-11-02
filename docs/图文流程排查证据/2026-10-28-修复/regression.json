@@ -1,0 +1,86 @@
+{
+  "date": "2026-10-28",
+  "version": "1.0.14",
+  "packaged": false,
+  "supplier": "isolated fixtures",
+  "cases": [
+    {
+      "id": "F02",
+      "status": "PASS",
+      "details": {
+        "editingLockedDuringPreview": true,
+        "submittedManualBodyRetained": true
+      }
+    },
+    {
+      "id": "F01",
+      "status": "PASS",
+      "details": {
+        "oldImageRetained": true,
+        "currentReviewCleared": true,
+        "reviewDisabled": true,
+        "exportWarnsStaleAndFailed": true,
+        "exportStillAllowed": true
+      }
+    },
+    {
+      "id": "F03",
+      "status": "PASS",
+      "details": {
+        "activeReferences": 30,
+        "archivedReferences": 1,
+        "newUploadAfterRemoval": true,
+        "oldVersionsRetained": true,
+        "archivedAssetReadable": true,
+        "archivedAssetIncludedInDeletion": true
+      }
+    },
+    {
+      "id": "F04",
+      "status": "PASS",
+      "details": {
+        "guardShown": true,
+        "cancelPreservesEdits": true,
+        "saveFailurePreservesEdits": true,
+        "savePreservesEdits": true,
+        "explicitDiscardWorks": true
+      }
+    },
+    {
+      "id": "F05-401",
+      "status": "PASS",
+      "details": {
+        "errorCode": "AGNES_AUTH",
+        "requestsBeforeStop": 1,
+        "retryAfterRecovery": 2
+      }
+    },
+    {
+      "id": "F05-402",
+      "status": "PASS",
+      "details": {
+        "errorCode": "AGNES_QUOTA",
+        "requestsBeforeStop": 1,
+        "retryAfterRecovery": 2
+      }
+    },
+    {
+      "id": "F05-429",
+      "status": "PASS",
+      "details": {
+        "errorCode": "AGNES_RATE_LIMIT",
+        "requestsBeforeStop": 1,
+        "retryAfterRecovery": 2
+      }
+    },
+    {
+      "id": "complete",
+      "status": "PASS",
+      "details": {
+        "allFiveFindingsFixed": true,
+        "commercialCalls": 0,
+        "productionDataAccessed": false
+      }
+    }
+  ]
+}

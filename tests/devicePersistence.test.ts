@@ -12,7 +12,7 @@ import { LocalSQLiteManager } from '../electron/db/sqliteService';
 
 const config = { llmBaseUrl: 'https://provider.example/v1', llmModel: 'initial-model', llmApiKey: 'initial-secret',
   videoParserEndpoint: 'https://provider.example/parse', videoParserApiKey: 'parser-secret' };
-const empty = { llmBaseUrl: '', llmModel: '', videoParserEndpoint: '', llmKeyConfigured: false, videoKeyConfigured: false };
+const empty = { imageProtocol: 'agnes', imageEndpoint: 'https://apihub.agnes-ai.com/v1/images/generations', imageModel: 'agnes-image-2.5-flash', imageKeyConfigured: false, llmBaseUrl: '', llmModel: '', videoParserEndpoint: '', agnesModel: 'agnes-image-2.5-flash', agnesKeyConfigured: false, llmKeyConfigured: false, videoKeyConfigured: false };
 const key = randomBytes(32);
 const storage = { isEncryptionAvailable: () => true,
   encryptString(value: string) { const iv = randomBytes(12); const cipher = createCipheriv('aes-256-gcm', key, iv);
@@ -171,4 +171,47 @@ test('接口地址校验指出具体字段，失败不覆盖已保存配置或�
       assert.equal(service.read().llmBaseUrl, config.llmBaseUrl);
     }
   } finally { await fs.rm(directory, { recursive: true, force: true }); }
+});
+
+test('工作台旧版迁移与同版本载入均丢弃素材，偏好及历史重新编辑仍可用', async () => {
+  const storageKey = 'video-remix-ai-full-v3-storage';
+  const memory = new Map<string, string>();
+  const previousWindow = globalThis.window;
+  const previousStorage = globalThis.localStorage;
+  Object.assign(globalThis, { localStorage: { getItem: (key: string) => memory.get(key) || null,
+    setItem: (key: string, value: string) => memory.set(key, value), removeItem: (key: string) => memory.delete(key) } });
+  Object.assign(globalThis, { window: { localStorage: globalThis.localStorage } });
+  const source = { platform: 'douyin', extractedUrl: 'https://v.douyin.com/previous/', title: '上次素材', author: '', durationSec: 18, transcript: '旧口播', visualSummary: '旧画面' };
+  try {
+    for (const version of [0, 2, 3]) {
+      memory.set(storageKey, JSON.stringify({ version, state: { linkInput: source.extractedUrl, parsedVideo: source,
+        editedTranscript: '上次未生成修改', editedVisualSummary: '上次未生成画面', sidebarCollapsed: true,
+        targetDurationSec: 36, userCameraWork: '俯拍', keywords: [{ id: 'kept', text: '业务词', category: 'brand' }], settings: { llmModel: 'kept-model', llmApiKey: 'legacy-secret' } } }));
+      delete require.cache[require.resolve('../src/store/useAppStore')];
+      const { useAppStore: store } = require('../src/store/useAppStore') as typeof import('../src/store/useAppStore');
+      await new Promise<void>(resolve => queueMicrotask(resolve));
+      const state = store.getState();
+      assert.equal(state.linkInput, ''); assert.equal(state.parsedVideo, null);
+      assert.equal(state.editedTranscript, ''); assert.equal(state.editedVisualSummary, '');
+      assert.equal(state.streamingScriptText, ''); assert.equal(state.parsedScript?.rawText, '');
+      assert.equal(state.parsedScript?.shots.length, 0);
+      assert.equal(state.sidebarCollapsed, true); assert.equal(state.targetDurationSec, 36);
+      assert.equal(state.userCameraWork, '俯拍'); assert.equal(state.keywords[0].text, '业务词');
+      assert.equal(state.settings.llmModel, 'kept-model'); assert.equal(state.settings.llmApiKey, '');
+      state.setLinkInput(source.extractedUrl); state.setParsedVideo(source as any); state.setEditedTranscript('本次编辑');
+      assert.equal(store.getState().editedTranscript, '本次编辑');
+      const record = { id: 'kept-history', title: '历史稿', createdAt: '2026-10-29T00:00:00Z', platform: 'douyin', durationSec: 18,
+        originalTranscript: '历史人工稿', sourceContent: source, sourceVideoUrl: source.extractedUrl,
+        rawGeneratedScript: '历史脚本', parsedStructure: null, userCameraWork: '平移', conversationMessages: [], refinementHistory: [] };
+      store.getState().loadHistoryToWorkbench(record as any);
+      assert.equal(store.getState().editedTranscript, '历史人工稿');
+      assert.equal(store.getState().streamingScriptText, '历史脚本');
+      const persisted = JSON.parse(memory.get(storageKey)!);
+      assert.equal(persisted.version, 3);
+      for (const key of ['linkInput', 'parsedVideo', 'editedTranscript', 'editedVisualSummary']) assert.equal(key in persisted.state, false);
+    }
+  } finally {
+    Object.assign(globalThis, { window: previousWindow, localStorage: previousStorage });
+    delete require.cache[require.resolve('../src/store/useAppStore')];
+  }
 });

@@ -10,7 +10,8 @@ import {
   X,
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
-import { parseVideoLinkClient, streamGenerateScriptClient } from '../services/ipcClient';
+import { extractAndRoute } from '../services/contentExtraction';
+import { streamGenerateScriptClient } from '../services/ipcClient';
 import { buildSystemPrompt, buildUserPrompt } from '../lib/promptBuilder';
 import { parseGeneratedScript, runScriptComplianceChecks } from '../lib/scriptParser';
 import type { HistoryRecord } from '../types';
@@ -19,7 +20,7 @@ import { OptimizeDialog } from '../components/OptimizeDialog';
 import { Composer } from '../components/composer/Composer';
 import { ScriptResult } from '../components/message/ScriptResult';
 import { Button } from '../components/ui/Button';
-import { cn } from '../lib/utils';
+import { creationGrid, cn } from '../lib/utils';
 import { getTranscriptionNotice } from '../lib/extractionNotices';
 import { getEditableSourceText, isImageTextContent } from '../lib/extractedContent';
 import { getVideoLinkError } from '../../electron/services/videoLink';
@@ -115,45 +116,17 @@ export const WorkbenchView: React.FC = () => {
   // 模式一（手动分步模式）：仅提取原视频文案与画面描述，供人工编辑后再触发二创
   // ==========================================================================
   const handleExtractOnly = async () => {
-    const sourceState = useAppStore.getState();
-    if (sourceState.isParsingVideo || sourceState.isGeneratingScript) return;
-    const linkError = getVideoLinkError(sourceState.linkInput);
+    const source = useAppStore.getState();
+    const linkError = getVideoLinkError(source.linkInput);
     if (linkError) { setParseError(linkError); return; }
-    const revision = sourceState.workbenchRevision;
-    setParseError(null);
-    setGenerateError(null);
-    setExtractNotice(null);
-    setIsParsingVideo(true);
+    setParseError(null); setGenerateError(null); setExtractNotice(null);
     try {
-      const parseRes = await parseVideoLinkClient(sourceState.linkInput, sourceState.settings);
-      if (useAppStore.getState().workbenchRevision !== revision) return;
-      if (parseRes.data) {
-        const videoData = parseRes.data;
-        setParsedVideo(videoData);
-        if (videoData.durationSec > 0)
-          setTargetDurationSec(Math.min(180, Math.max(6, Math.round(videoData.durationSec))));
-        if (!sourceState.userCameraWork.trim() && videoData.suggestedCameraWork)
-          setUserCameraWork(videoData.suggestedCameraWork);
-      }
-      if (!parseRes.success || !parseRes.data) {
-        setParseError(parseRes.errorMessage || '提取失败，请检查链接、厂商权限或余额后手动重试。');
-        return;
-      }
-      setExtractNotice(
-        isImageTextContent(parseRes.data)
-          ? '图文已提取，正文与图片文字已填入编辑区，核对修改后即可二创。'
-          : parseRes.data.transcript.trim()
-            ? '提取已完成，请核对口播后生成二创稿。'
-            : '已提取可用素材，请查看详情并补充文案后再二创。'
-      );
+      const data = await extractAndRoute(source.linkInput);
+      if (data) setExtractNotice('素材已提取，已按内容类型进入对应模块。');
     } catch (error) {
-      if (useAppStore.getState().workbenchRevision === revision)
-        setParseError(error instanceof Error && /[\u4e00-\u9fff]/u.test(error.message) ? error.message : '提取请求失败，请检查网络和账号状态后手动重试。');
-    } finally {
-      setIsParsingVideo(false);
+      setParseError(error instanceof Error ? error.message : '提取请求失败，请检查网络和账号状态。');
     }
   };
-
   // ==========================================================================
   // 基于左侧当前（人工修改后）文案，结合本公司业务与本地知识库开始二创
   // ==========================================================================
@@ -530,7 +503,7 @@ export const WorkbenchView: React.FC = () => {
           生成结果{isGeneratingScript && <LoaderCircle className="animate-spin" />}
         </Button>
       </div>
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 p-3 md:p-5 lg:grid-cols-[minmax(320px,1fr)_minmax(0,2fr)] lg:gap-5">
+      <div className={creationGrid}>
         <section
           id="source-panel"
           aria-label="素材编辑"
@@ -651,10 +624,6 @@ export const WorkbenchView: React.FC = () => {
               {isGeneratingScript ? <LoaderCircle className="animate-spin" /> : <ArrowRight />}
               {isGeneratingScript ? '生成中…' : '生成二创脚本'}
             </Button>
-            <p className="mt-2 text-center text-[11px] text-muted-foreground">
-              {isManuallyEdited ? '基于人工修改后的文案' : imageTextContent ? '使用当前图文与业务设置' : '使用当前口播与业务设置'}
-              <span className="hidden xl:inline"> · Ctrl + 回车</span>
-            </p>
           </footer>
         </section>
         <section

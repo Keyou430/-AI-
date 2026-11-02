@@ -31,6 +31,15 @@ function sanitizeStoredSettings(settings: AppSettings): AppSettings {
   return sanitized;
 }
 
+function discardStoredWorkbench(stored: any) {
+  const retained = { ...stored };
+  delete retained.linkInput;
+  delete retained.parsedVideo;
+  delete retained.editedTranscript;
+  delete retained.editedVisualSummary;
+  return retained;
+}
+
 type SettingsTab = 'content' | 'system';
 
 interface AppState {
@@ -124,7 +133,8 @@ export const useAppStore = create<AppState>()(
       settingsTab: 'content',
       setSettingsTab: (tab) => set({ settingsTab: tab }),
       setActiveNav: (tab, settingsTab = 'content') => {
-        set({ activeNav: tab, ...(tab === 'settings' ? { settingsTab } : {}) });
+        set({ activeNav: tab, ...(tab === 'settings' ? { settingsTab } : {}),
+          ...(tab === 'history' ? { selectedHistoryId: null, historyFilterPlatform: 'all', historySearchQuery: '' } : {}) });
         if (tab === 'history') {
           get().loadHistoryFromSQLite();
         } else if (tab === 'settings') {
@@ -270,9 +280,9 @@ export const useAppStore = create<AppState>()(
           }));
 
           const { selectedHistoryId } = get();
-          const nextSelected =
-            selectedHistoryId &&
-            hydratedRecords.some((r) => r.id === selectedHistoryId)
+          // 历史页统一从视频、图文列表选择，视频刷新不能单独覆盖图文选择。
+          const nextSelected = get().activeNav === 'history' ||
+            (selectedHistoryId && hydratedRecords.some((r) => r.id === selectedHistoryId))
               ? selectedHistoryId
               : hydratedRecords[0]?.id || null;
 
@@ -387,19 +397,15 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'video-remix-ai-full-v3-storage',
-      version: 2,
-      migrate: (stored: any) => ({ ...stored, settings: sanitizeStoredSettings(stored?.settings) }),
-      merge: (stored: any, current) => ({ ...current, ...stored,
+      version: 3,
+      migrate: (stored: any) => ({ ...discardStoredWorkbench(stored), settings: sanitizeStoredSettings(stored?.settings) }),
+      merge: (stored: any, current) => ({ ...current, ...discardStoredWorkbench(stored),
         settings: sanitizeStoredSettings({ ...current.settings, ...stored?.settings }) }),
       onRehydrateStorage: () => (state, error) => {
         if (state && !error) queueMicrotask(() => state.updateSettings({ llmApiKey: '', videoParserApiKey: '' }));
       },
       partialize: (state) => ({
         sidebarCollapsed: state.sidebarCollapsed,
-        linkInput: state.linkInput,
-        parsedVideo: state.parsedVideo,
-        editedTranscript: state.editedTranscript,
-        editedVisualSummary: state.editedVisualSummary,
         targetDurationSec: state.targetDurationSec,
         userCameraWork: state.userCameraWork,
         keywords: state.keywords,

@@ -1,3 +1,4 @@
+import { buildKnowledgeContext } from './knowledgeContext';
 import { KeywordTag, KnowledgeDocument, ParsedVideoInfo } from '../types';
 import { getEditableSourceText, getSourceKeywords, isImageTextContent } from './extractedContent';
 
@@ -62,21 +63,23 @@ export function buildUserPrompt(input: BuildPromptInput): string {
     .filter((k) => k.category === 'forbidden')
     .map((k) => k.text);
 
-  // Phase 3: 将启用的本地知识库完整解析文本 (fullContent) 通过长上下文拼接注入 Prompt
-  const activeDocs = knowledgeDocs.filter((d) => d.enabled);
-  const knowledgeContextBlock =
-    activeDocs.length > 0
-      ? activeDocs
-          .map(
-            (doc, idx) =>
-              `--- 知识库文档 ${idx + 1}：《${doc.name}》 ---\n${
-                doc.fullContent || doc.contentSnippet
-              }`
-          )
-          .join('\n\n')
-      : '（当前未启用额外本地知识库文档，请以本公司主营业务概述与核心业务关键词为准）';
-
+  // Phase 3: 启用的本地知识库按字数预算注入；超出预算时按与本次素材和关键词的相关度节选，控制 token 消耗。
   const imageTextContent = isImageTextContent(videoInfo);
+  const sourceKeywords = imageTextContent ? getSourceKeywords(videoInfo) : [];
+  const knowledgeContextBlock = buildKnowledgeContext(knowledgeDocs, {
+    terms: [
+      ...brandWords.map((text) => ({ text, weight: 5 })),
+      ...jargonWords.map((text) => ({ text, weight: 3 })),
+      ...sourceKeywords.map((text) => ({ text, weight: 2 })),
+    ],
+    text: [
+      editedTranscript || getEditableSourceText(videoInfo),
+      editedVisualSummary,
+      companyBusinessProfile,
+      refinementInstruction || '',
+    ].join('\n'),
+  }).block;
+
   const sourceLabel = imageTextContent ? '图文' : '视频';
   const lines: string[] = [
     `请基于以下【原热点${sourceLabel}提取/人工修订内容】与【本公司业务及本地知识库配置】，生成商业二创分镜脚本：`,

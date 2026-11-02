@@ -1,0 +1,145 @@
+{
+  "date": "2026-10-28",
+  "baseline": "db2a56b + current working changes",
+  "supplier": "isolated fixtures, no commercial calls",
+  "cases": [
+    {
+      "id": "AUD-01",
+      "status": "PASS",
+      "details": {
+        "flow": "原有桌面回归正常链路",
+        "features": [
+          "视频提取与二创",
+          "图文自动分流",
+          "确认前零生图",
+          "单图与全局差异生成",
+          "版本回切",
+          "参考图取消归档",
+          "有序导出",
+          "历史恢复"
+        ]
+      }
+    },
+    {
+      "id": "AUD-02",
+      "status": "PASS",
+      "details": {
+        "configErrorVisible": true,
+        "replanRecovered": true,
+        "imageCallsBeforeConfirmation": 0
+      }
+    },
+    {
+      "id": "AUD-03",
+      "status": "PASS",
+      "details": {
+        "missingAgnesBlockedNetwork": true,
+        "confirmedRetained": true,
+        "partialFailureRecovered": true,
+        "attempts": 3,
+        "successfulPageNotRegenerated": true
+      }
+    },
+    {
+      "id": "AUD-04",
+      "status": "FINDING",
+      "details": {
+        "fieldEditableDuringWait": true,
+        "typedBody": "AUD-04 用户在等待期间补充的真实正文",
+        "bodyAfterPreview": "只修改发布正文",
+        "manualEditLost": true
+      }
+    },
+    {
+      "id": "AUD-05",
+      "status": "FINDING",
+      "details": {
+        "newText": "AUD-05 新版图内文字需要替换旧版",
+        "renderedText": "图文封面",
+        "oldAssetRetained": true,
+        "reviewedAfterFailure": true,
+        "exportedFiles": [
+          "01.png",
+          "02.png",
+          "内部核对.txt",
+          "发布文案.txt"
+        ],
+        "checklistWarnsOutdated": false,
+        "checklist": "内部核对清单（不用于发布）\n通过：禁用词，未发现已配置禁用词\n通过：内部说明／占位符，未发现指定占位内容\n通过：每页当前图片，每页均有当前图\n通过：整套比例，已生成版本比例与整套一致\n通过：标题长度，团队未提供上限，暂不作数值判断；当前 15\n通过：正文长度，团队未提供上限，暂不作数值判断；当前 7\n通过：话题数量，团队未提供上限，暂不作数值判断；当前 1\n第 2 图：图内文字尚未人工核对"
+      }
+    },
+    {
+      "id": "AUD-06",
+      "status": "FINDING",
+      "details": {
+        "referenceCount": 30,
+        "newReferenceRejected": true,
+        "removeReferenceControl": false,
+        "actions": [
+          "",
+          "为本图补传实际场景图（可选）",
+          "取消",
+          "优化并重生成本图"
+        ]
+      }
+    },
+    {
+      "id": "AUD-07",
+      "status": "PASS",
+      "details": {
+        "cancelRequestObserved": true,
+        "retryRecovered": true,
+        "elapsedMs": 92
+      }
+    },
+    {
+      "id": "AUD-08",
+      "status": "FINDING",
+      "details": {
+        "unsavedGuardShown": false,
+        "expectedBody": "AUD-08 需要保留的人工修改",
+        "restoredBody": "只修改发布正文",
+        "manualEditLost": true
+      }
+    },
+    {
+      "id": "AUD-09",
+      "status": "FINDING",
+      "details": {
+        "pageCount": 2,
+        "unauthorizedCalls": 2,
+        "stoppedAfterFirstFailure": false
+      }
+    },
+    {
+      "id": "AUD-10",
+      "status": "PASS",
+      "details": {
+        "fixtureRestored": true,
+        "productionDataAccessed": false,
+        "commercialCalls": 0
+      }
+    }
+  ],
+  "sourceHashes": {
+    "scripts/desktopSmoke.cjs": "142428e80c0226afd9726d0fc6ec4d58557aa13458f85c6c917b8623463fc369",
+    "src/views/ImageTextView.tsx": "2116440be4dcf3e67453bb47cc5402f1f386c1e71a9b1a949906ab26630282b7",
+    "src/store/useImageTextStore.ts": "bef87448973eba549f082783298d38532ca94d3e5e4a34d26a7b25d89d11cad2",
+    "electron/services/imageTextReview.ts": "f86e4b4a3d080c2e262bd45b244543bf0048caa4700f921373b37812c88f6ee5",
+    "electron/services/imageTextIpc.ts": "8de64fffcd4225036a081d7fd7047d4841a331597c6130b21b857395c13755d7",
+    "electron/services/agnesImageService.ts": "bf62ba85b5bef260d540021171432ea4c1fa3854959c1096063547b41e0fd2f0"
+  },
+  "execution": {
+    "command": ".\\node_modules\\.bin\\electron.cmd docs/图文流程排查证据/2026-10-28/run-flow-audit.cjs",
+    "typecheck": 0,
+    "unitTests": {
+      "exitCode": 0,
+      "passed": 138,
+      "failed": 0
+    },
+    "productionBuild": 0,
+    "extendedDesktopHarness": 0,
+    "acceptance": "5 findings remain; exit 0 means the diagnostic run completed, not release acceptance",
+    "diagnosticRunnerSha256": "e439fdff004efb874087b4ccd4d0912e15b48ddf4672726e4327099f55eea005"
+  }
+}

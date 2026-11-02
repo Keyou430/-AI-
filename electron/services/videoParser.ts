@@ -29,6 +29,8 @@ export interface ParsedVideoData {
   durationSec: number;
   transcript: string;
   publishedText?: string;
+  contentKind?: 'video' | 'image-text' | 'unknown';
+  contentKindEvidence?: string;
   transcriptionStatus?: 'succeeded' | 'failed' | 'empty' | 'not_video' | 'partial';
   extractionDetails?: LinkDigestDetails;
   transcriptionMessage?: string;
@@ -77,11 +79,12 @@ export async function parseShortVideoLink(
   }
 
   const preset = req.apiProvider === 'yaoan' ? getYaoanVideoPreset(platform) : undefined;
-  const endpoint = preset?.endpoint || req.apiEndpoint?.trim() || DEFAULT_HARDCODED_VIDEO_API.endpoint;
+  const configuredEndpoint = req.apiEndpoint?.trim();
+  const endpoint = preset ? (configuredEndpoint ? configuredEndpoint.replace(/\/+$/, '') + new URL(preset.endpoint).pathname : preset.endpoint) : configuredEndpoint || DEFAULT_HARDCODED_VIDEO_API.endpoint;
   const apiKey = req.apiKey?.trim() || DEFAULT_HARDCODED_VIDEO_API.apiKey;
 
   if (req.apiProvider === 'linkdigest') {
-    return readLinkDigest({ url, platform, apiKey: req.apiKey?.trim() || '', maxCredits: req.linkDigestMaxCredits }, onError, signal);
+    return readLinkDigest({ url, platform, apiKey: req.apiKey?.trim() || '', maxCredits: req.linkDigestMaxCredits, endpoint: configuredEndpoint }, onError, signal);
   }
 
   try {

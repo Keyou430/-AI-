@@ -1,4 +1,4 @@
-const { app, shell } = require('electron');
+const { app, shell, dialog, nativeImage } = require('electron');
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -35,7 +35,8 @@ const timer = setTimeout(() => { console.error('桌面验证超时'); app.exit(1
 const waitFor = async (window, expression) => {
   const deadline = Date.now() + 20000;
   while (Date.now() < deadline) {
-    if (await window.webContents.executeJavaScript(expression)) return;
+    const ready = await window.webContents.executeJavaScript(expression).catch(error => { throw new Error('等待界面脚本异常：' + expression, { cause: error }); });
+    if (ready) return;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error('界面未达到预期状态：' + expression);
@@ -78,9 +79,23 @@ app.on('browser-window-created', (_event, window) => {
           return;
         }
         let body = ''; for await (const chunk of request) body += chunk;
-        const prompt = JSON.parse(body).messages.at(-1).content;
+        const messages = JSON.parse(body).messages;
+        const prompt = messages.at(-1).content;
+        if (messages[0].content.includes('小红书图文策划师')) {
+          const input = JSON.parse(prompt);
+          const current = input.current;
+          const pages = current.pages.length ? current.pages : [
+            { id: '', text: '图文封面', visual: '自然光实景封面', referenceIds: [] },
+            { id: '', text: '方法介绍', visual: '实景细节', referenceIds: [] },
+          ];
+          if (input.instruction.includes('优化第二页')) pages[1].text = '优化后的方法介绍';
+          const plan = { title: '图文验收二创', body: current.body || '二创发布正文', tags: ['收纳'], style: current.style || '自然光实景', notices: [], pages };
+          response.writeHead(200, { 'Content-Type': 'text/event-stream' });
+          response.end('data: ' + JSON.stringify({ choices: [{ delta: { content: JSON.stringify(plan) } }] }) + '\n\ndata: [DONE]\n\n');
+          return;
+        }
         response.writeHead(200, { 'Content-Type': 'text/event-stream' });
-        const script = '【分镜脚本总览】共1个镜头，总时长18秒\n【镜头1 | 0-18秒】\n▪️人员动作分工：出镜人员展示产品，摄影师跟拍\n▪️运镜与拍摄执行标准：近景平视\n▪️声音内容：接口生成验收\n' + prompt;
+        const script = '【分镜脚本总览】共2个镜头，总时长18秒\n【镜头1 | 0-9秒】\n▪️人员动作分工：出镜人员展示产品，摄影师跟拍\n▪️运镜与拍摄执行标准：近景平视\n▪️声音内容：接口生成验收\n【镜头2 | 9-18秒】\n▪️人员动作分工：展示产品细节\n▪️运镜与拍摄执行标准：特写平移\n▪️声音内容：第二镜验收\n' + prompt;
         const pieces = script.match(/[\s\S]{1,80}/g);
         let index = 0;
         const interval = setInterval(() => {
@@ -116,7 +131,7 @@ app.on('browser-window-created', (_event, window) => {
       await waitFor(window, 'document.querySelector("[data-testid=editable-transcript]")?.value === "接口验收原始口播"');
       assert.equal((await call('listHistoryFromDB')).records.length,beforeExtract);
       await window.webContents.executeJavaScript('const textarea = document.querySelector("[data-testid=editable-transcript]"); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value").set.call(textarea,"人工修订后的企业口播"); textarea.dispatchEvent(new Event("input",{bubbles:true}));');
-      await waitFor(window, "document.body.innerText.includes('基于人工修改后的文案')");
+      await waitFor(window, "document.querySelector('[aria-label=素材编辑]').innerText.includes('已编辑')");
       await window.webContents.executeJavaScript('document.querySelector("[data-testid=generate-script]").click()');
       await waitFor(window, 'window.electronAPI.listHistoryFromDB().then(result => result.records.some(record => record.originalTranscript === "人工修订后的企业口播"))');
       const manualRecord = (await call('listHistoryFromDB')).records.find(record => record.originalTranscript === '人工修订后的企业口播');
@@ -165,28 +180,450 @@ app.on('browser-window-created', (_event, window) => {
         assert.equal((await call('listHistoryFromDB')).records.find(record => record.id === otherRecord.id).rawGeneratedScript,otherRecord.rawGeneratedScript);
         await waitFor(window, 'document.querySelector("[role=tabpanel] pre")?.textContent.includes("验证保存失败时保留生成结果")');
       } finally { LocalSQLiteManager.prototype.upsertRecord = originalUpsert; }
-      // 图文走正式 LinkDigest 解析器，测试响应由本机提供，不调用商业接口。
+      // 图文通过正式提取／策划／生图适配器；仅在隔离验收进程替换供应商响应，不调用商业接口。
       const beforeImageFetch = globalThis.fetch;
+      const beforeDialog = dialog.showOpenDialog;
+      const samplePNG = nativeImage.createFromBitmap(Buffer.alloc(48 * 64 * 4, 220), { width: 48, height: 64 }).toPNG();
+      const referenceFile = path.join(dataDirectory, 'scene.png'); fs.writeFileSync(referenceFile, samplePNG);
+      let imageCalls = 0; const imageRequests = []; let pendingImageResponse = null;
       LocalProviderService.prototype.read = function () { return { ...originalRead.call(this),
+        llmApiKey: 'fixture-key', llmBaseUrl: baseURL, llmModel: 'fixture-model', agnesApiKey: 'fixture-key',
         videoParserProvider: 'linkdigest', videoParserApiKey: 'fixture-key', linkDigestMaxCredits: 5 }; };
-      globalThis.fetch = (input, init) => String(input) === 'https://linkdigest.dev/api/v1/digest'
-        ? beforeImageFetch(baseURL + '/image-digest', init) : beforeImageFetch(input, init);
+      globalThis.fetch = (input, init) => {
+        if (String(input) === 'https://linkdigest.dev/api/v1/digest') return beforeImageFetch(baseURL + '/image-digest', init);
+        if (String(input) === 'https://apihub.agnes-ai.com/v1/images/generations') {
+          imageCalls++; const payload = JSON.parse(init.body); imageRequests.push(payload);
+          const [rw, rh] = payload.ratio.split(':').map(Number);
+          const width = rw * 16, height = rh * 16;
+          const bitmap = Buffer.alloc(width * height * 4);
+          for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+            const offset = (y * width + x) * 4; const edge = x === 0 || y === 0 || x === width - 1 || y === height - 1;
+            bitmap[offset] = edge ? 95 : y < height / 2 ? 235 : 190;
+            bitmap[offset + 1] = edge ? 65 : y < height / 2 ? 210 : 225;
+            bitmap[offset + 2] = edge ? 60 : y < height / 2 ? 185 : 220;
+            bitmap[offset + 3] = 255;
+          }
+          const output = nativeImage.createFromBitmap(bitmap, { width, height }).toPNG();
+          return (pendingImageResponse || Promise.resolve()).then(() => Response.json({ data: [{ b64_json: output.toString('base64') }] }));
+        }
+        return beforeImageFetch(input, init);
+      };
+      const clickText = async text => {
+        const expression = 'Array.from(document.querySelectorAll("button")).find(el => el.textContent.trim() === ' + JSON.stringify(text) + ')';
+        await waitFor(window, 'Boolean(' + expression + ')');
+        return window.webContents.executeJavaScript(expression + '.click()').catch(error => { throw new Error('点击按钮失败：' + text, { cause: error }); });
+      };
+      const setLabel = (label, value) => window.webContents.executeJavaScript('(' + ((name, next) => {
+        const labels = Array.from(document.querySelectorAll('label')).filter(el => el.firstChild?.textContent === name);
+        const labelElement = labels.find(el => el.closest('[role=dialog]')) || labels[0];
+        const el = labelElement?.querySelector('textarea,input,select');
+        if (!el) throw new Error('找不到可编辑字段');
+        Object.getOwnPropertyDescriptor(el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : el.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype, 'value').set.call(el, next);
+        el.dispatchEvent(new Event(el.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true }));
+      }).toString() + ')(' + JSON.stringify(label) + ',' + JSON.stringify(value) + ')').catch(error => { throw new Error('填写字段失败：' + label, { cause: error }); });
+      const insertPage = async direction => {
+        await clickText('增加一图');
+        await waitFor(window, 'Array.from(document.querySelectorAll("[role=menuitem]")).some(el => el.textContent.trim() === ' + JSON.stringify(direction) + ')');
+        await window.webContents.executeJavaScript('Array.from(document.querySelectorAll("[role=menuitem]")).find(el => el.textContent.trim() === ' + JSON.stringify(direction) + ').click()');
+      };
+      const imageHistory = async () => (await call('listImageTextHistory')).data;
+      const layoutDirectory = applicationPath.endsWith('.asar') ? path.join(__dirname, '..', 'release', 'three-module-layout-' + require(path.join(applicationPath, 'package.json')).version) : path.join(applicationPath, 'docs', '图文流程排查证据', '2026-10-30-三模块布局');
+      fs.mkdirSync(layoutDirectory, { recursive: true });
+      const layoutChecks = [];
+      const layoutEval = (fn, ...args) => window.webContents.executeJavaScript('(' + fn.toString() + ')(' + args.map(value => JSON.stringify(value)).join(',') + ')').catch(error => { throw new Error('布局脚本失败：' + fn.toString(), { cause: error }); });
+      const layoutRecord = (id, details) => {
+        layoutChecks.push({ id, status: 'PASS', details });
+        fs.writeFileSync(path.join(layoutDirectory, 'layout.json'), JSON.stringify({ date: '2026-10-30', version: require(path.join(applicationPath, 'package.json')).version, packaged: applicationPath.endsWith('.asar'), supplier: 'isolated fixtures', cases: layoutChecks }, null, 2), 'utf8');
+      };
+      const captureLayout = async name => {
+        await layoutEval(() => document.querySelectorAll("button[aria-label=关闭提示]").forEach(el => el.click()));
+        await waitFor(window, '!document.querySelector("button[aria-label=关闭提示]")');
+        window.setOpacity(0); window.showInactive();
+        await window.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))');
+        await new Promise(resolve => setTimeout(resolve, 160));
+        fs.writeFileSync(path.join(layoutDirectory, name + '.png'), (await window.webContents.capturePage()).toPNG());
+      };
+      const resizeLayout = async (width, height) => {
+        window.setOpacity(0); window.showInactive();
+        window.setContentSize(width, height);
+        await waitFor(window, 'window.innerWidth === ' + width + ' && window.innerHeight === ' + height);
+        await new Promise(resolve => setTimeout(resolve, 180)); // 侧栏宽度有 150ms CSS 过渡，尺寸稳定后再测量。
+
+      };
+      const selectLayoutTab = async prefix => {
+        await layoutEval(value => { const el = Array.from(document.querySelectorAll('[aria-label=图文编辑分页] [role=tab]')).find(el => el.textContent.trim().startsWith(value)); el.click(); }, prefix);
+        await waitFor(window, 'Array.from(document.querySelectorAll("[aria-label=图文编辑分页] [role=tab]")).some(el => el.textContent.trim().startsWith(' + JSON.stringify(prefix) + ') && el.getAttribute("aria-selected") === "true") && Array.from(document.querySelectorAll("#image-text-plan [role=tabpanel]")).filter(el => !el.hidden).length === 1');
+      };
+      const readLayoutLabel = label => layoutEval(value => Array.from(document.querySelectorAll('[aria-label=图文策划与确认] label')).find(el => el.firstChild?.textContent === value)?.querySelector('textarea,input,select')?.value, label);
+      const measureLayout = () => layoutEval(() => {
+        const rect = el => { if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height, right: r.right, bottom: r.bottom, visible: r.width > 0 && r.height > 0 && r.x >= 0 && r.y >= 0 && r.right <= innerWidth + 1 && r.bottom <= innerHeight + 1 }; };
+        const button = text => Array.from(document.querySelectorAll('button')).find(el => el.textContent.trim().startsWith(text));
+        const field = text => Array.from(document.querySelectorAll('[aria-label=图文策划与确认] label')).find(el => el.firstChild?.textContent === text)?.querySelector('textarea');
+        return { width: innerWidth, height: innerHeight, scrollHeight: document.scrollingElement.scrollHeight, scrollWidth: document.documentElement.scrollWidth, confirm: rect(button('确认文案、张数及比例')), pagination: rect(document.querySelector('[aria-label=图片分页]')), preview: rect(document.querySelector('[data-testid=image-text-preview]')), previous: rect(button('上一图')), next: rect(button('下一图')), text: rect(field('图片内文字')), visual: rect(field('画面要求')), retry: rect(button('继续／重试')), cancel: rect(button('取消任务')), progress: rect(document.querySelector('header [role=status]')), selectedTab: document.querySelector('[aria-label=图文编辑分页] [role=tab][aria-selected=true]')?.textContent.trim() };
+      });
+      const panelProportion = (panel, scroll) => layoutEval((p, s) => { const a = document.querySelector(p).getBoundingClientRect(); const b = document.querySelector(s).getBoundingClientRect(); return { panelHeight: a.height, scrollHeight: b.height, proportion: b.height / a.height, widthProportion: a.width / innerWidth }; }, panel, scroll);
+      const assertPagination = bounds => {
+        assert.ok(bounds.pagination?.visible && bounds.pagination.y >= bounds.preview.bottom && bounds.pagination.y - bounds.preview.bottom <= 16, JSON.stringify(bounds));
+      };
+      const assertImageProportion = async () => { const ratio = await panelProportion('[aria-label=图文策划与确认]', '[data-testid=image-text-plan-scroll]'); assert.ok(ratio.proportion >= .65, JSON.stringify(ratio)); return ratio; };
+      window.webContents.setBackgroundThrottling(false);
       try {
+        // 三模块几何尺寸、视频工具栏和导出菜单通过真实组件验收。
+        await layoutEval(() => Array.from(document.querySelectorAll('[aria-label=脚本视图] [role=tab]')).find(el => el.textContent === '拍摄脚本').click());
+        await waitFor(window, 'Boolean(document.querySelector("[aria-label=下一个镜头]"))');
+        for (const [width, height] of [[1366, 768], [1440, 900], [1920, 1080]]) {
+          await resizeLayout(width, height);
+          const ratio = await panelProportion('[aria-label=脚本结果]', '[data-testid=script-result-scroll]');
+          assert.ok(ratio.proportion >= .8, JSON.stringify(ratio));
+          layoutRecord('R5-workbench-' + width, ratio); await captureLayout('工作台-' + width + 'x' + height);
+        }
+        await resizeLayout(1366, 768);
+        await layoutEval(() => Array.from(document.querySelectorAll('[aria-label=脚本视图] [role=tab]')).find(el => el.textContent === '拍摄脚本').click());
+        await waitFor(window, 'Boolean(document.querySelector("[aria-label=下一个镜头]"))');
+        await layoutEval(() => document.querySelector('[aria-label=下一个镜头]').click());
+        assert.equal(await layoutEval(() => document.querySelector('[aria-label=选择镜头]').value), '1');
+        await layoutEval(() => document.querySelector('[aria-label=上一个镜头]').click());
+        assert.equal(await layoutEval(() => document.querySelector('[aria-label=选择镜头]').value), '0');
+        for (const tab of ['拍摄手法', '口播稿', '全文']) {
+          await layoutEval(value => Array.from(document.querySelectorAll('[aria-label=脚本视图] [role=tab]')).find(el => el.textContent === value).click(), tab);
+          await waitFor(window, 'document.querySelector("[aria-label=脚本视图] [aria-selected=true]")?.textContent === ' + JSON.stringify(tab));
+        }
+        // 剪贴板使用隔离接收器，避免覆盖操作系统中用户已有的内容。
+        await layoutEval(() => { window.layoutClipboardWrite = navigator.clipboard.writeText; navigator.clipboard.writeText = async text => { window.layoutCopiedText = text; }; document.querySelector('[aria-label=复制全文]').click(); });
+        await waitFor(window, 'document.querySelector("[aria-label=复制全文]").textContent.includes("已复制")');
+        assert.ok(await layoutEval(() => window.layoutCopiedText.includes('验证保存失败时保留生成结果')));
+        await layoutEval(() => { navigator.clipboard.writeText = window.layoutClipboardWrite; delete window.layoutClipboardWrite; delete window.layoutCopiedText; });
+        await layoutEval(() => document.querySelector('nav button[aria-label=历史记录]').click());
+        await waitFor(window, 'Boolean(document.querySelector("[data-record-id=' + manualRecord.id + ']"))');
+        await layoutEval(id => document.querySelector('[data-record-id="' + id + '"]').click(), manualRecord.id);
+        await waitFor(window, 'Boolean(document.querySelector("[aria-label=历史详情] [data-testid=script-result-scroll]"))');
+        for (const [width, height] of [[1366, 768], [1440, 900], [1920, 1080]]) {
+          await resizeLayout(width, height);
+          const ratio = await panelProportion('[aria-label=历史详情]', '[data-testid=script-result-scroll]');
+          assert.ok(ratio.proportion >= .8 && ratio.widthProportion > .5, JSON.stringify(ratio));
+          layoutRecord('R5-history-video-' + width, ratio); await captureLayout('历史脚本-' + width + 'x' + height);
+        }
+        const savedDialog = dialog.showSaveDialog;
+        try {
+          for (const [label, ext] of [['导出文本', 'txt'], ['导出文档', 'doc']]) {
+            const outputFile = path.join(dataDirectory, 'layout-export.' + ext);
+            dialog.showSaveDialog = async () => ({ canceled: false, filePath: outputFile });
+            await clickText('导出'); await waitFor(window, 'Boolean(document.querySelector("[role=menuitem]"))');
+            await layoutEval(value => Array.from(document.querySelectorAll('[role=menuitem]')).find(el => el.textContent === value).click(), label);
+            await waitFor(window, 'document.body.innerText.includes(' + JSON.stringify('已导出：' + manualRecord.title.slice(0,20) + '_二创分镜脚本.' + ext) + ')');
+            assert.ok(fs.readFileSync(outputFile, 'utf8').includes('接口生成验收'));
+          }
+        } finally { dialog.showSaveDialog = savedDialog; }
+        layoutRecord('R4-video-tools', { tabs: true, shotPagination: true, copy: true, txt: true, doc: true });
+        await layoutEval(() => document.querySelector('nav button[aria-label=小红书图文]').click());
+        await waitFor(window, 'Boolean(document.querySelector("[data-testid=image-text-empty]"))');
+        for (const [width, height] of [[1366, 768], [1920, 1080], [390, 844]]) {
+          await resizeLayout(width, height);
+          const blank = await layoutEval(() => ({ panels: ['图文策划与确认', '图文结果'].every(label => !!document.querySelector('[aria-label="' + label + '"]')), disabledTabs: Array.from(document.querySelectorAll('[aria-label=图文编辑分页] [role=tab]')).every(el => el.disabled), noConfirm: !Array.from(document.querySelectorAll('button')).some(el => el.textContent.startsWith('确认文案、张数及比例')), noPagination: !document.querySelector('[aria-label=图片分页]'), linkEnabled: !document.querySelector('#image-text-link').disabled, noOverflow: document.documentElement.scrollWidth <= innerWidth }));
+          assert.ok(Object.values(blank).every(Boolean), JSON.stringify(blank)); layoutRecord('R2-blank-' + width, blank); await captureLayout('图文空白-' + width + 'x' + height);
+        }
+        await resizeLayout(1366, 768);
+        await layoutEval(() => document.querySelector('nav button[aria-label=二创工作台]').click());
         await window.webContents.executeJavaScript('{ const input = document.querySelector("[name=sourceVideoUrl]"); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(input,"https://www.xiaohongshu.com/explore/image-note"); input.dispatchEvent(new Event("input",{bubbles:true})); }');
         await window.webContents.executeJavaScript('document.querySelector("[data-testid=extract-video]").click()');
-        await waitFor(window, 'document.querySelector("[data-testid=editable-transcript]")?.value.includes("图文验收图片原文")');
-        assert.equal(await window.webContents.executeJavaScript('document.querySelector("[data-testid=editable-transcript]").value.includes("图文验收正文")'), true);
+        await waitFor(window, 'document.body.innerText.includes("确认文案、张数及比例，开始生成 2 张图片") && !document.body.innerText.includes("正在融合知识库")');
+        assert.equal(imageCalls, 0);
+        assert.equal(await window.webContents.executeJavaScript('Boolean(document.querySelector("[aria-label=图文结果]"))'), true);
         assert.equal(await window.webContents.executeJavaScript('document.querySelector("[data-testid=source-keywords]").textContent.includes("外贸")'), true);
-        assert.equal(await window.webContents.executeJavaScript('document.body.innerText.includes("使用当前图文与业务设置")'), true);
-        assert.equal(await window.webContents.executeJavaScript('document.body.innerText.includes("未返回口播")'), false);
-        assert.equal(await window.webContents.executeJavaScript('document.body.innerText.includes("未取得口播文字")'), false);
-        assert.equal(await window.webContents.executeJavaScript('document.querySelector("[data-testid=generate-script]").disabled'), false);
+        const initialDraft = (await imageHistory())[0];
+        assert.equal((await call('generateImageText', { draft: initialDraft, pageId: initialDraft.pages[0].id, taskId: randomUUID() })).success, false);
+        assert.equal(imageCalls, 0);
+        // 布局验收沿用真实入口和表单，仅供应商、授权及用户数据使用隔离样本。
+        for (const [width, height] of [[1366, 768], [1440, 900], [1920, 1080]]) {
+          await resizeLayout(width, height);
+          const bounds = await measureLayout();
+          assert.ok(bounds.confirm?.visible && bounds.preview?.visible, JSON.stringify(bounds));
+          assert.ok(bounds.scrollHeight <= height && bounds.scrollWidth <= width, JSON.stringify(bounds));
+          assert.equal(bounds.selectedTab, '文案');
+          await captureLayout('确认前-' + width + 'x' + height);
+          assertPagination(bounds);
+          layoutRecord('L01-' + width, { ...bounds, left: await assertImageProportion() });
+        }
+        await resizeLayout(1366, 768);
+        const longLink = 'https://www.xiaohongshu.com/explore/layout-test?token=' + 'x'.repeat(1200);
+        await layoutEval(value => { const el = document.querySelector('#image-text-link'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, value); el.dispatchEvent(new Event('input', { bubbles: true })); el.scrollLeft = el.scrollWidth; }, longLink);
+        const topbar = await layoutEval(() => { const row = document.querySelector('[data-testid=image-text-topbar]'); const title = row.querySelector('h1').getBoundingClientRect(); const link = row.querySelector('input').getBoundingClientRect(); return { titleY: title.y + title.height / 2, linkY: link.y + link.height / 2, rowHeight: row.clientHeight, inputHeight: link.height, inputTag: row.querySelector('input').tagName, linkLength: row.querySelector('input').value.length, inputScroll: row.querySelector('input').scrollLeft }; });
+        assert.ok(Math.abs(topbar.titleY - topbar.linkY) < 2 && topbar.rowHeight < 60 && topbar.linkLength === longLink.length && topbar.inputScroll > 0, JSON.stringify(topbar));
+        await layoutEval(() => { const el = document.querySelector('#image-text-link'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, ''); el.dispatchEvent(new Event('input', { bubbles: true })); });
+        layoutRecord('U01-header', topbar);
+        await setLabel('话题（空格分隔）', '布局验收 输入保留');
+        await selectLayoutTab('逐图'); await selectLayoutTab('文案');
+        assert.equal(await readLayoutLabel('话题（空格分隔）'), '布局验收 输入保留');
+        await setLabel('话题（空格分隔）', initialDraft.tags.join(' '));
+        await layoutEval(() => { const el = Array.from(document.querySelectorAll('[aria-label=图文策划与确认] label')).find(el => el.firstChild?.textContent === '话题（空格分隔）').querySelector('textarea'); el.focus(); el.blur(); });
+        await clickText('下一图');
+        assert.equal((await measureLayout()).selectedTab, '文案');
+        assert.equal(await layoutEval(() => Array.from(document.querySelectorAll('[aria-label=图文编辑分页] [role=tab]')).find(el => el.textContent.startsWith('逐图')).textContent.trim()), '逐图 · 第 2 图');
+        await selectLayoutTab('逐图');
+        assert.equal(await readLayoutLabel('图片内文字'), initialDraft.pages[1].text);
+        await setLabel('图片内文字', '第二图编辑保留'); await clickText('上一图'); await clickText('下一图');
+        assert.equal(await readLayoutLabel('图片内文字'), '第二图编辑保留');
+        await setLabel('图片内文字', initialDraft.pages[1].text);
+        await selectLayoutTab('风格');
+        await layoutEval(() => { const el = document.querySelector('[data-testid=image-text-plan-scroll]'); el.scrollTop = el.scrollHeight; });
+        await selectLayoutTab('逐图');
+        assert.equal(await layoutEval(() => document.querySelector('[data-testid=image-text-plan-scroll]').scrollTop), 0);
+        layoutRecord('L02', { uncommittedTagsRetained: true, activePageEditingLinked: true, pageSwitchRetainsEdits: true, pageSwitchDoesNotChangeTab: true, tabScrollResets: true });
+        await layoutEval(() => { document.querySelector('[aria-label="图片预览与翻页"]').focus(); });
+        for (const [key, index] of [['ArrowLeft', 0], ['ArrowRight', 1]]) {
+          window.webContents.sendInputEvent({ type: 'keyDown', keyCode: key === 'ArrowLeft' ? 'Left' : 'Right' });
+          window.webContents.sendInputEvent({ type: 'keyUp', keyCode: key === 'ArrowLeft' ? 'Left' : 'Right' });
+          await waitFor(window, 'document.querySelector("select[aria-label=选择图片]").selectedIndex === ' + index);
+        }
+        const ignoredKey = await layoutEval(() => { const el = document.querySelector('select[aria-label=选择图片]'); el.focus(); const event = new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }); el.dispatchEvent(event); return { prevented: event.defaultPrevented, page: el.selectedIndex }; });
+        assert.deepEqual(ignoredKey, { prevented: false, page: 1 });
+        assert.equal(await layoutEval(() => document.querySelector('[data-testid=image-text-preview]').textContent.includes('方法介绍')), true);
+        layoutRecord('R3-keyboard', { previous: true, next: true, inputIgnored: true, ungeneratedTextVisible: true });
+        const pageIdsBeforeInsert = await layoutEval(() => Array.from(document.querySelector('select[aria-label=选择图片]').options).map(option => option.value));
+        await insertPage('往前增加');
+        await waitFor(window, 'document.querySelector("select[aria-label=选择图片]").options.length === 3');
+        const insertedBefore = await layoutEval(() => { const el = document.querySelector('select[aria-label=选择图片]'); return { ids: Array.from(el.options).map(option => option.value), selected: el.value, index: el.selectedIndex }; });
+        assert.deepEqual(insertedBefore.ids.filter(id => id !== insertedBefore.selected), pageIdsBeforeInsert); assert.equal(insertedBefore.index, 1);
+        await clickText('删除当前图'); await waitFor(window, 'document.querySelector("select[aria-label=选择图片]").options.length === 2');
+        await layoutEval(() => { const el = document.querySelector('select[aria-label=选择图片]'); el.selectedIndex = 1; el.dispatchEvent(new Event('change', { bubbles: true })); });
+        layoutRecord('U06-insert-before', insertedBefore);
+        for (let count = 3; count <= 6; count++) {
+          await insertPage('往后增加');
+          await waitFor(window, 'document.querySelector("select[aria-label=选择图片]").options.length === ' + count);
+          await setLabel('图片内文字', '布局验收第 ' + count + ' 图');
+          await setLabel('画面要求', '六张图片逐页核对实际场景');
+        }
+        for (let index = 0; index < 6; index++) {
+          await layoutEval(i => { const el = document.querySelector('select[aria-label=选择图片]'); el.selectedIndex = i; el.dispatchEvent(new Event('change', { bubbles: true })); }, index);
+          const bounds = await measureLayout();
+          assert.ok(bounds.previous?.visible && bounds.next?.visible && bounds.text?.visible && bounds.visual?.visible && bounds.confirm?.visible, JSON.stringify(bounds));
+          assert.ok(bounds.scrollHeight <= bounds.height, JSON.stringify(bounds));
+          assert.equal(await readLayoutLabel('图片内文字'), index < 2 ? initialDraft.pages[index].text : '布局验收第 ' + (index + 1) + ' 图');
+        }
+        const pageActionRow = await layoutEval(() => { const heading = Array.from(document.querySelectorAll('#image-text-plan p')).find(el => el.textContent.startsWith('当前第')); const buttons = Array.from(heading.parentElement.querySelectorAll('button')); const center = el => { const rect = el.getBoundingClientRect(); return rect.y + rect.height / 2; }; return { headingY: center(heading), buttonYs: buttons.map(center), labels: buttons.map(el => el.textContent.trim()), rowFits: heading.parentElement.scrollWidth <= heading.parentElement.clientWidth }; });
+        assert.deepEqual(pageActionRow.labels, ['增加一图', '删除当前图']); assert.ok(pageActionRow.rowFits && pageActionRow.buttonYs.every(y => Math.abs(y - pageActionRow.headingY) < 2), JSON.stringify(pageActionRow));
+        layoutRecord('U05-page-action-row', pageActionRow);
+        await captureLayout('六张逐图编辑-1366x768');
+        layoutRecord('L03', { sixPageControlsInViewport: true, wholePageScrollNotRequired: true });
+        for (let count = 6; count > 2; count--) {
+          await layoutEval(() => { const el = document.querySelector('select[aria-label=选择图片]'); el.selectedIndex = el.options.length - 1; el.dispatchEvent(new Event('change', { bubbles: true })); });
+          await clickText('删除当前图');
+          await waitFor(window, 'document.querySelector("select[aria-label=选择图片]").options.length === ' + (count - 1));
+        }
+        // 单页隐藏翻页条，恢复两页后继续原有生成与优化流程。
+        await layoutEval(() => { const el = document.querySelector('select[aria-label=选择图片]'); el.selectedIndex = 1; el.dispatchEvent(new Event('change', { bubbles: true })); });
+        await clickText('删除当前图'); await waitFor(window, '!document.querySelector("[aria-label=图片分页]")');
+        assert.equal(await layoutEval(() => Array.from(document.querySelectorAll('button')).some(el => el.textContent.trim() === '上一图' || el.textContent.trim() === '下一图')), false);
+        await insertPage('往后增加'); await waitFor(window, 'document.querySelector("select[aria-label=选择图片]")?.options.length === 2');
+        await setLabel('图片内文字', initialDraft.pages[1].text); await setLabel('画面要求', initialDraft.pages[1].visual);
+        layoutRecord('R3-single-page', { paginationHidden: true, restoredMultiPage: true });
+        const planLabels = await layoutEval(() => Array.from(document.querySelectorAll('[aria-label=图文编辑分页] [role=tab]')).map(el => el.textContent.trim()));
+        assert.deepEqual(planLabels.map(label => label.split(' · ')[0]), ['文案', '逐图', '风格', '素材 ' + initialDraft.references.length]);
+        assert.equal(await layoutEval(() => document.querySelector('#image-text-plan').textContent.includes('调整分页结构')), false);
+        layoutRecord('L04', { planTabs: planLabels, automaticReviewPanelRemoved: true, structureDisclosureRemoved: true });
+        await selectLayoutTab('文案');
+        await resizeLayout(390, 844);
+        let mobileBounds = await measureLayout();
+        assert.ok(mobileBounds.confirm?.visible, JSON.stringify(mobileBounds));
+        assert.ok(mobileBounds.scrollWidth <= mobileBounds.width && mobileBounds.scrollHeight <= mobileBounds.height, JSON.stringify(mobileBounds));
+        await captureLayout('确认前-390x844');
+        await clickText('图片预览');
+        assert.ok((await measureLayout()).preview?.visible);
+        assert.equal(await layoutEval(() => getComputedStyle(document.querySelector('#image-text-plan')).display), 'none');
+        await clickText('策划编辑');
+        assert.equal((await measureLayout()).selectedTab, '文案');
+        layoutRecord('L05', { ...mobileBounds, mobilePanelsSwitch: true });
+        await resizeLayout(1366, 768);
+        let releaseImages;
+        pendingImageResponse = new Promise(resolve => { releaseImages = resolve; });
+        await clickText('确认文案、张数及比例，开始生成 2 张图片');
+        await waitFor(window, 'Array.from(document.querySelectorAll("button")).some(el => el.textContent.trim() === "取消任务")');
+        const generatingBounds = await measureLayout();
+        assert.equal(generatingBounds.selectedTab, '发布文案');
+        assert.ok(generatingBounds.retry?.visible && generatingBounds.progress?.visible && generatingBounds.cancel?.visible, JSON.stringify(generatingBounds));
+        await layoutEval(() => { const el = document.querySelector('[data-testid=image-text-result-scroll]'); el.scrollTop = el.scrollHeight; });
+        assert.ok((await measureLayout()).cancel?.visible);
+        await resizeLayout(390, 844);
+        assert.equal(await layoutEval(() => document.querySelector('[aria-controls=image-text-result]').getAttribute('aria-pressed')), 'true');
+        assert.ok(await layoutEval(() => !!document.querySelector('[aria-controls=image-text-result] .animate-spin')));
+        const generatingMobile = await measureLayout();
+        assert.ok(generatingMobile.cancel?.visible && generatingMobile.scrollWidth <= generatingMobile.width, JSON.stringify(generatingMobile));
+        await captureLayout('生成中-390x844');
+        layoutRecord('L06', { desktop: generatingBounds, mobile: generatingMobile, autoSwitchesToResult: true, busySpinnerVisible: true, cancelRemainsVisibleAfterScroll: true });
+        releaseImages(); pendingImageResponse = null;
+        await resizeLayout(1366, 768);
+
+        await waitFor(window, 'window.electronAPI.listImageTextHistory().then(r => r.data[0]?.pages.every(p => p.assetId))');
+        assert.equal(imageCalls, 2);
+        const generated = (await imageHistory())[0];
+        await waitFor(window, 'Boolean(document.querySelector("[data-testid=image-text-preview] img")?.complete)');
+        for (const [width, height] of [[1366, 768], [1440, 900], [1920, 1080], [390, 844]]) {
+          await resizeLayout(width, height);
+          const bounds = await measureLayout();
+          assert.ok(bounds.preview?.visible && bounds.previous?.visible && bounds.next?.visible, JSON.stringify(bounds));
+          assert.ok(bounds.scrollWidth <= width && bounds.scrollHeight <= height, JSON.stringify(bounds));
+          await captureLayout('生成后-' + width + 'x' + height);
+          assertPagination(bounds);
+          layoutRecord('L07-' + width, bounds);
+        }
+        await resizeLayout(1366, 768);
+        await selectLayoutTab('发布文案');
+        assert.ok(await layoutEval(() => document.querySelector('[data-testid=image-text-title]').getBoundingClientRect().height > 0));
+        assert.equal(await layoutEval(() => !!document.querySelector('[aria-label=图文结果] h2')), false);
+        assert.deepEqual(await layoutEval(() => Array.from(document.querySelectorAll('[aria-label=图文编辑分页] [role=tab]')).map(el => el.textContent.trim())), ['发布文案', '素材 ' + generated.references.length]);
+        await layoutEval(() => { window.layoutClipboardWrite = navigator.clipboard.writeText; navigator.clipboard.writeText = async text => { window.layoutCopiedText = text; }; });
+        const directPublication = { title: 'U03 人工发布标题', body: 'U03 人工编辑正文，仅保存不生图', tags: ['U03最新话题', '不失焦也保留'] };
+        await setLabel('发布标题', directPublication.title); await setLabel('配套发布正文', directPublication.body); await setLabel('话题（空格分隔）', directPublication.tags.join(' '));
+        await clickText('复制文案'); await waitFor(window, 'document.body.innerText.includes("发布文案已复制")');
+        const copiedPublication = await layoutEval(() => window.layoutCopiedText);
+        assert.ok(copiedPublication.includes(directPublication.title) && copiedPublication.includes(directPublication.body) && copiedPublication.includes('#不失焦也保留'));
+        await layoutEval(() => { navigator.clipboard.writeText = window.layoutClipboardWrite; delete window.layoutClipboardWrite; delete window.layoutCopiedText; });
+        assert.equal(await layoutEval(() => document.querySelectorAll('header button').length > 0 && Array.from(document.querySelectorAll('header button')).every(el => el.textContent.trim() !== '复制文案')), true);
+        await clickText('保存'); await waitFor(window, 'window.electronAPI.listImageTextHistory().then(r => r.data[0].title === ' + JSON.stringify(directPublication.title) + ' && r.data[0].tags.includes("不失焦也保留"))');
+        assert.equal(imageCalls, 2);
+        await layoutEval(() => document.querySelector('nav button[aria-label=历史记录]').click()); await waitFor(window, 'Boolean(document.querySelector("[data-testid=history-record]"))');
+        await layoutEval(() => document.querySelector('[data-testid=history-record]').click()); await clickText('重新编辑');
+        await waitFor(window, 'document.querySelector("[data-testid=image-text-title]")?.value === ' + JSON.stringify(directPublication.title));
+        assert.equal(await readLayoutLabel('配套发布正文'), directPublication.body); assert.deepEqual((await imageHistory())[0].tags, directPublication.tags);
+        await setLabel('发布标题', generated.title); await setLabel('配套发布正文', generated.body); await setLabel('话题（空格分隔）', generated.tags.join(' ')); await clickText('保存');
+        await waitFor(window, 'window.electronAPI.listImageTextHistory().then(r => r.data[0].title === ' + JSON.stringify(generated.title) + ')');
+        const versionPlacement = await layoutEval(() => { const details = document.querySelector('[data-testid=image-text-detail-scroll]'); const description = details.querySelector('details'); const version = details.querySelector('select[aria-label=页面版本]').closest('label'); const review = details.querySelector('input[type=checkbox]').closest('label'); return { versionAfterDescription: !!(description.compareDocumentPosition(version) & Node.DOCUMENT_POSITION_FOLLOWING), reviewAfterVersion: !!(version.compareDocumentPosition(review) & Node.DOCUMENT_POSITION_FOLLOWING), imageColumnHasNoVersion: !document.querySelector('[data-testid=image-text-image-column]').querySelector('select[aria-label=页面版本],input[type=checkbox]') }; });
+        assert.deepEqual(versionPlacement, { versionAfterDescription: true, reviewAfterVersion: true, imageColumnHasNoVersion: true });
+        layoutRecord('U02-version-position', versionPlacement);
+        layoutRecord('U03-edit-publication', { editableTitleBodyTags: true, copiedLatestTagsWithoutBlur: true, savedAndReopened: true, imageCallsUnchanged: imageCalls, duplicateCopyRemoved: true });
+        await layoutEval(() => document.querySelectorAll('button[aria-label=关闭提示]').forEach(el => el.click()));
+        await waitFor(window, '!document.querySelector("button[aria-label=关闭提示]")');
+        const assetDirectory = path.join(dataDirectory, 'image-text-assets');
+        const beforeImportFiles = fs.readdirSync(assetDirectory).sort();
+        const invalidReferenceFile = path.join(dataDirectory, 'invalid-scene.png');
+        fs.writeFileSync(invalidReferenceFile, 'invalid-image');
+        dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [referenceFile, invalidReferenceFile] });
+        const importReference = () => window.webContents.executeJavaScript('window.electronAPI.selectImageTextReferences("scene",' + JSON.stringify(generated) + ')');
+        assert.equal((await importReference()).success, false);
+        assert.deepEqual(fs.readdirSync(assetDirectory).sort(), beforeImportFiles);
+        assert.deepEqual((await imageHistory())[0].references, generated.references);
+        dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [referenceFile] });
+        const originalSaveImageTextRecord = LocalSQLiteManager.prototype.saveImageTextRecord;
+        LocalSQLiteManager.prototype.saveImageTextRecord = async () => { throw new Error('测试参考图归档失败'); };
+        try {
+          assert.equal((await importReference()).success, false);
+          assert.deepEqual(fs.readdirSync(assetDirectory).sort(), beforeImportFiles);
+        } finally { LocalSQLiteManager.prototype.saveImageTextRecord = originalSaveImageTextRecord; }
+        await clickText('下一图');
+        await clickText('图片优化');
+        await waitFor(window, 'Boolean(document.querySelector("[role=dialog]"))');
+        await setLabel('本图文字', '取消后不应保留的修改');
+        await clickText('为本图补传实际场景图（可选）');
+        await waitFor(window, 'document.querySelector("[role=dialog]").textContent.includes("scene.png")');
+        const imported = (await imageHistory())[0];
+        assert.equal(imported.references.length, 1);
+        assert.deepEqual(imported.pages, generated.pages);
+        await clickText('取消');
+        await waitFor(window, '!document.querySelector("[role=dialog]")');
+        assert.equal(imageCalls, 2);
+        assert.equal((await imageHistory())[0].references.length, 1);
+        await clickText('图片优化');
+        await waitFor(window, 'document.querySelector("[role=dialog]")?.textContent.includes("scene.png")');
+        await setLabel('本图文字', '用户修订第二图');
+        await window.webContents.executeJavaScript('Array.from(document.querySelectorAll("[role=dialog] label")).find(el => el.textContent.includes("scene.png")).querySelector("input[type=checkbox]").click()');
+        await clickText('优化并重生成本图');
+        await waitFor(window, 'window.electronAPI.listImageTextHistory().then(r => r.data[0]?.pages[1].text === "用户修订第二图" && r.data[0].pages[1].assetId !== ' + JSON.stringify(generated.pages[1].assetId) + ')');
+        const singleOptimized = (await imageHistory())[0];
+        assert.equal(imageCalls, 3); assert.equal(singleOptimized.pages[0].assetId, generated.pages[0].assetId);
+        assert.equal(singleOptimized.pages[1].referenceIds.length, 1); assert.equal(imageRequests.at(-1).extra_body.image.length, 1);
+        await clickText('全局优化');
+        await waitFor(window, 'Boolean(document.querySelector("[role=dialog]"))');
+        await setLabel('配套发布正文', '只修改发布正文');
+        await clickText('仅更新文案');
+        await waitFor(window, 'window.electronAPI.listImageTextHistory().then(r => r.data[0]?.body === "只修改发布正文")');
+        assert.equal(imageCalls, 3);
+        await clickText('全局优化');
+        await waitFor(window, 'Boolean(document.querySelector("[role=dialog]"))');
+        await setLabel('全局优化指令（可选，填写后调用文本模型重新策划）', '优化第二页');
+        await clickText('生成优化预览');
+        await waitFor(window, 'Array.from(document.querySelectorAll("button")).some(el => el.textContent.trim() === "应用全局优化" && !el.disabled)');
+        assert.equal(imageCalls,3);
+        await clickText('应用全局优化');
+        await waitFor(window, 'window.electronAPI.listImageTextHistory().then(r => r.data[0]?.pages[1].text === "优化后的方法介绍" && r.data[0].pages[1].assetId !== ' + JSON.stringify(singleOptimized.pages[1].assetId) + ')');
+        assert.equal(imageCalls, 4);
+        assert.equal((await imageHistory())[0].pages[0].assetId, generated.pages[0].assetId);
+        await clickText('全局优化');
+        await waitFor(window, 'Boolean(document.querySelector("[role=dialog]"))');
+        await setLabel('整套比例', '1:1'); await clickText('应用全局优化');
+        await waitFor(window, 'window.electronAPI.listImageTextHistory().then(r => r.data[0]?.ratio === "1:1" && r.data[0].pages.every(p => p.renderedKey.includes("1:1")))');
+        assert.equal(imageCalls, 6);
+        const beforeVersions = (await imageHistory())[0];
+        assert.ok(beforeVersions.versions.length >= 6);
+        await window.webContents.executeJavaScript('document.querySelector("[aria-label=图文结果] input[type=checkbox]").click()');
+        await waitFor(window, 'window.electronAPI.listImageTextHistory().then(r => r.data[0].pages[1].reviewedVersionId === r.data[0].pages[1].currentVersionId)');
+        const historicalVersion = beforeVersions.versions.find(v => v.pageId === beforeVersions.pages[1].id);
+        await window.webContents.executeJavaScript('(() => {const el=document.querySelector("select[aria-label=页面版本]");Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,"value").set.call(el,' + JSON.stringify(historicalVersion.id) + ');el.dispatchEvent(new Event("change",{bubbles:true}));})()');
+        await waitFor(window, 'window.electronAPI.listImageTextHistory().then(r => r.data[0].pages[1].assetId === ' + JSON.stringify(historicalVersion.assetId) + ' && !r.data[0].pages[1].reviewedVersionId)');
+        assert.equal(imageCalls,6);
+        await window.webContents.executeJavaScript('(() => {const el=document.querySelector("select[aria-label=页面版本]");Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,"value").set.call(el,' + JSON.stringify(beforeVersions.pages[1].currentVersionId) + ');el.dispatchEvent(new Event("change",{bubbles:true}));})()');
+        await waitFor(window, 'window.electronAPI.listImageTextHistory().then(r => r.data[0].pages[1].assetId === ' + JSON.stringify(beforeVersions.pages[1].assetId) + ')');
+        assert.equal(imageCalls,6);
+        dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [dataDirectory] });
+        await clickText('导出素材包');
+        await waitFor(window, 'document.body.innerText.includes("素材包已导出到")');
+        const exportDirectory = fs.readdirSync(dataDirectory).find(name => name.startsWith('小红书图文-'));
+        assert.deepEqual(fs.readdirSync(path.join(dataDirectory, exportDirectory)).sort(), ['01.png', '02.png', '内部核对.txt', '发布文案.txt']);
+        assert.ok(fs.readFileSync(path.join(dataDirectory, exportDirectory, '发布文案.txt'), 'utf8').includes('只修改发布正文'));
+        const longHistoryDraft = (await imageHistory())[0];
+        longHistoryDraft.body += '\n' + '历史长文滚动验收，图片和翻页保持固定。\n'.repeat(80);
+        assert.equal((await call('saveImageTextHistory', longHistoryDraft)).success, true);
         window.setSize(390, 844);
         await waitFor(window, 'window.innerWidth < 500');
         assert.equal(await window.webContents.executeJavaScript('document.documentElement.scrollWidth <= window.innerWidth'), true);
         window.setSize(1440, 900);
+        await window.webContents.executeJavaScript('document.querySelector("nav button[aria-label=历史记录]").click()');
+        await waitFor(window, 'Boolean(document.querySelector("[aria-label=内容类型筛选]"))');
+        await clickText('图文');
+        await waitFor(window, 'Boolean(document.querySelector("[data-testid=history-record]"))');
+        assert.equal(await window.webContents.executeJavaScript('document.querySelectorAll("[data-testid=history-record]").length'), 1);
+        await window.webContents.executeJavaScript('document.querySelector("[data-testid=history-record]").click()');
+        await waitFor(window, 'document.querySelector("[aria-label=历史详情] h2")?.textContent === ' + JSON.stringify(beforeVersions.title));
+        assert.equal(await layoutEval(() => document.querySelector('[aria-label=历史详情] h2')?.textContent), beforeVersions.title);
+        assert.ok(await layoutEval(() => document.querySelector('[aria-label=历史详情]').textContent.includes('只修改发布正文')));
+        for (const [width, height] of [[1366, 768], [1440, 900], [1920, 1080], [390, 844]]) {
+          await resizeLayout(width, height);
+          const bounds = await measureLayout(); assertPagination(bounds);
+          assert.ok(bounds.scrollWidth <= width, JSON.stringify(bounds));
+          const ratio = await panelProportion('[aria-label=历史详情]', '[data-testid=image-text-result-scroll]');
+          if (width >= 1024) assert.ok(ratio.proportion >= .8 && ratio.widthProportion > .5, JSON.stringify(ratio));
+          const columns = await layoutEval(() => { const el = document.querySelector('[data-testid=image-text-result-scroll]').firstElementChild; const children = el.children; const a = children[0].getBoundingClientRect(); const b = children[1].getBoundingClientRect(); return { width: el.parentElement.clientWidth, sideBySide: b.x >= a.right, stacked: b.y >= a.bottom }; });
+          assert.ok(columns.width >= 520 ? columns.sideBySide : columns.stacked, JSON.stringify(columns));
+          const historyScroll = await layoutEval(() => {
+            const column = document.querySelector('[data-testid=image-text-image-column]'); const preview = column.querySelector('[data-testid=image-text-preview]'); const text = document.querySelector('[data-testid=image-text-detail-scroll]'); const img = preview.querySelector('img'); const pagination = column.querySelector('[aria-label=图片分页]'); const before = preview.getBoundingClientRect();
+            text.scrollTop = text.scrollHeight;
+            const after = preview.getBoundingClientRect();
+            return { imageOverflow: getComputedStyle(column).overflowY, textOverflow: getComputedStyle(text).overflowY, textScrolled: text.scrollTop > 0, columnHeight: column.clientHeight, previewHeight: preview.clientHeight, pagerHeight: pagination.clientHeight, imageHeight: img.clientHeight, objectFit: getComputedStyle(img).objectFit, fixedAfterTextScroll: before.y === after.y && before.height === after.height, imageColumnNoScroll: column.scrollHeight <= column.clientHeight, pagerAtBottom: Math.abs(column.getBoundingClientRect().bottom - pagination.getBoundingClientRect().bottom) < 2 };
+          });
+          assert.equal(historyScroll.imageOverflow, 'hidden'); assert.equal(historyScroll.textOverflow, 'auto'); assert.equal(historyScroll.objectFit, 'contain');
+          assert.ok(historyScroll.textScrolled && historyScroll.imageColumnNoScroll && historyScroll.fixedAfterTextScroll && historyScroll.pagerAtBottom && historyScroll.previewHeight >= historyScroll.columnHeight - historyScroll.pagerHeight - 16, JSON.stringify(historyScroll));
+          layoutRecord('U08-history-fixed-' + width, historyScroll);
+          layoutRecord('R5-history-image-' + width, { ...ratio, ...columns, pagination: bounds.pagination, preview: bounds.preview }); await captureLayout('历史图文-' + width + 'x' + height);
+        }
+        await resizeLayout(390, 844); await layoutEval(() => document.querySelector('[aria-label=返回列表]').click());
+        assert.equal(await layoutEval(() => getComputedStyle(document.querySelector('[aria-label=历史详情]')).display), 'none');
+        await layoutEval(() => document.querySelector('[data-testid=history-record]').click());
+        await resizeLayout(1366, 768);
+        layoutRecord('L08', { historyPublicationPreserved: true, mobileBackToList: true });
+        await clickText('重新编辑');
+        await waitFor(window, 'Boolean(document.querySelector("[aria-label=图文结果] img"))');
+        const beforeDelete = (await imageHistory())[0];
+        const deletionInfo = await call('getImageTextDeletionInfo',beforeDelete.id);
+        assert.equal(deletionInfo.success,true); assert.ok(deletionInfo.data.count >= 7);
+        await window.webContents.executeJavaScript('document.querySelector("nav button[aria-label=历史记录]").click()');
+        await waitFor(window, 'Boolean(document.querySelector("[aria-label=内容类型筛选]"))');
+        await clickText('图文');
+        await waitFor(window, 'Boolean(document.querySelector("button[aria-label^=删除记录]"))');
+        await window.webContents.executeJavaScript('document.querySelector("button[aria-label^=删除记录]").click()');
+        await waitFor(window, 'document.querySelector("[role=dialog]")?.textContent.includes("个图片文件")');
+        await clickText('取消');
+        assert.equal((await imageHistory()).length,1);
       } finally {
-        globalThis.fetch = beforeImageFetch;
+        globalThis.fetch = beforeImageFetch; dialog.showOpenDialog = beforeDialog; window.hide();
         LocalProviderService.prototype.read = originalRead;
       }
       await new Promise(resolve => providerServer.close(resolve));
@@ -339,16 +776,23 @@ app.on('browser-window-created', (_event, window) => {
       assert.ok(entries.some(entry => entry.operationId === serviceFailure.operationId && entry.channel === 'video:parse' && entry.outcome === 'failed'));
       assert.ok(entries.some(entry => entry.channel === 'db:history:save' && entry.event === 'operation.failed' && entry.error));
       assert.ok(entries.some(entry => entry.channel === 'auth:create-user' && entry.actorId && entry.outcome === 'success'));
+      const checkEntries = entries.filter(entry => entry.event === 'image-text.check');
+      assert.ok(checkEntries.some(entry => entry.kind === 'assets') && checkEntries.some(entry => entry.kind === 'evidence') && checkEntries.some(entry => entry.kind === 'forbidden'));
+      for (const entry of checkEntries) {
+        assert.ok(entry.targetId && ['success', 'failed'].includes(entry.outcome));
+        assert.ok(Object.keys(entry).every(key => ['timestamp','level','event','sessionId','pid','targetId','kind','outcome'].includes(key)), JSON.stringify(entry));
+      }
+      layoutRecord('U04-check-logs', { count: checkEntries.length, structuredResultsOnly: true, automaticChecksHiddenFromUI: true });
       const logText = JSON.stringify(entries);
       for (const secret of [password,'人工修订后的企业口播','真实业务资料','LOG_PRIVATE_RENDERER_ERROR',
-        'LOG_PRIVATE_RENDERER_REJECTION','LOG_PRIVATE_API_KEY','LOG_PRIVATE_UPSTREAM_RESPONSE']) {
+        'LOG_PRIVATE_RENDERER_REJECTION','LOG_PRIVATE_API_KEY','LOG_PRIVATE_UPSTREAM_RESPONSE','U03 人工编辑正文，仅保存不生图','U03最新话题']) {
         assert.equal(logText.includes(secret),false,'日志不应包含凭据或正文');
       }
       app.once('before-quit', () => assert.ok(readLogs().some(entry => entry.event === 'app.stopping')));
       if (testAuthServer) await new Promise(resolve => { testAuthServer.close(resolve); testAuthServer.closeAllConnections(); });
       globalThis.fetch = originalFetch;
       completed = true;
-      console.log('桌面验证通过：首屏、管理员登录或初始化、角色权限、停用拦截、提取后人工修订二创及原稿保存、图文自动填入及关键词展示、跨记录生成隔离、保存失败提示、知识库、历史删除确认（取消/关闭/失败重试/重复点击/桌面与移动端）、运行日志及异常追踪。');
+      console.log('桌面验证通过：首屏、管理员登录或初始化、角色权限、停用拦截、提取后人工修订二创及原稿保存、图文自动分流与一次确认、Agnes 协议回放、单图素材优化与全局差异生图、素材包导出、统一历史恢复、跨记录生成隔离、保存失败提示、知识库、历史删除确认（取消/关闭/失败重试/重复点击/桌面与移动端）、运行日志及异常追踪。');
       clearTimeout(timer);
       app.quit();
     } catch (error) {

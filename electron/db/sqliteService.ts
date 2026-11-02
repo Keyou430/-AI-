@@ -5,9 +5,54 @@
  * - 落盘生成标准二进制 `.sqlite` 文件：`app.getPath('userData')/video-remix-history.sqlite`
  */
 
+import type { ImageTextDraft } from '../services/imageTextTypes';
+import { assertImageTextDraft } from '../services/imageTextModel';
 import path from 'path';
 import fs from 'fs';
 import type { ParsedVideoData } from '../services/videoParser';
+
+const ATOMIC_RENAME_RETRIES = 5;
+const ATOMIC_RENAME_RETRY_DELAY_MS = 40;
+
+/**
+ * 原子写入：先写同目录临时文件并 fsync，再整体替换目标文件。
+ * 写入中途崩溃或断电时，目标文件保持上一次完整内容，不会出现半截数据库。
+ * Windows 下杀毒或索引程序可能短暂占用文件，重命名失败时短暂重试；
+ * 最终仍失败则抛出错误（内存数据仍在，下次写入会再次尝试落盘），绝不回退为原地覆盖。
+ */
+export function writeFileAtomicSync(target: string, data: Buffer): void {
+  const temporary = `${target}.${process.pid}.tmp`;
+  const fd = fs.openSync(temporary, 'w');
+  try {
+    fs.writeSync(fd, data, 0, data.length, 0);
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  for (let attempt = 0; ; attempt++) {
+    try {
+      fs.renameSync(temporary, target);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (attempt >= ATOMIC_RENAME_RETRIES || !['EPERM', 'EBUSY', 'EACCES'].includes(code || '')) {
+        try { fs.rmSync(temporary, { force: true }); } catch { /* 临时文件清理失败不影响原文件 */ }
+        throw error;
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ATOMIC_RENAME_RETRY_DELAY_MS * (attempt + 1));
+    }
+  }
+}
+
+function removeStaleTemporaryFiles(target: string): void {
+  const directory = path.dirname(target);
+  const prefix = path.basename(target) + '.';
+  try {
+    for (const name of fs.readdirSync(directory)) {
+      if (name.startsWith(prefix) && name.endsWith('.tmp')) fs.rmSync(path.join(directory, name), { force: true });
+    }
+  } catch { /* 残留临时文件不影响正常读取 */ }
+}
 
 export interface DBRefinementVersion {
   id: string;
@@ -103,6 +148,25 @@ CREATE TABLE IF NOT EXISTS history_records (
 );
 CREATE INDEX IF NOT EXISTS idx_history_created_at ON history_records(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_history_platform ON history_records(platform);
+
+CREATE TABLE IF NOT EXISTS image_text_page_versions (
+  id TEXT PRIMARY KEY,
+  record_id TEXT NOT NULL,
+  page_id TEXT NOT NULL,
+  asset_id TEXT NOT NULL,
+  version_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_image_text_versions_record ON image_text_page_versions(record_id);
+CREATE TABLE IF NOT EXISTS image_text_cleanup (
+  id TEXT PRIMARY KEY,
+  asset_ids_json TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS image_text_records (
+  id TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL,
+  record_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_image_text_created_at ON image_text_records(created_at DESC);
 
 CREATE TABLE IF NOT EXISTS knowledge_documents (
   id TEXT PRIMARY KEY,
@@ -241,6 +305,7 @@ export class LocalSQLiteManager {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const initSqlJs = require('sql.js');
       const SQL = await initSqlJs();
+      removeStaleTemporaryFiles(this.dbPath);
 
       if (fs.existsSync(this.dbPath)) {
         const fileBuffer = fs.readFileSync(this.dbPath);
@@ -294,12 +359,11 @@ export class LocalSQLiteManager {
   private flushWasmToDisk(): void {
     if (this.wasmDb && this.dbPath) {
       const data = this.wasmDb.export();
-      const buffer = Buffer.from(data);
-      fs.writeFileSync(this.dbPath, buffer);
+      writeFileAtomicSync(this.dbPath, Buffer.from(data));
     }
   }
 
-  private async getTableCount(tableName: 'history_records' | 'knowledge_documents'): Promise<number> {
+  private async getTableCount(tableName: 'history_records' | 'knowledge_documents' | 'image_text_records'): Promise<number> {
     if (this.engine === 'better-sqlite3' && this.nativeDb) {
       const row = this.nativeDb
         .prepare(`SELECT COUNT(*) as cnt FROM ${tableName}`)
@@ -537,6 +601,68 @@ export class LocalSQLiteManager {
   // ==========================================================================
   // Phase 3: 知识库文档 SQLite 持久化操作
   // ==========================================================================
+  public async listImageTextRecords(): Promise<ImageTextDraft[]> {
+    await this.ensureInitialized();
+    const rows = (sql: string): any[] => {
+      if (this.nativeDb) return this.nativeDb.prepare(sql).all();
+      const values: any[] = []; const stmt = this.wasmDb.prepare(sql);
+      try { while (stmt.step()) values.push(stmt.getAsObject()); } finally { stmt.free(); }
+      return values;
+    };
+    const records: ImageTextDraft[] = rows('SELECT record_json FROM image_text_records ORDER BY created_at DESC').map(row => JSON.parse(row.record_json));
+    const versions = new Map<string, ImageTextDraft['versions']>();
+    for (const row of rows('SELECT record_id,version_json FROM image_text_page_versions ORDER BY rowid')) {
+      const list = versions.get(row.record_id) || []; list.push(JSON.parse(row.version_json)); versions.set(row.record_id,list);
+    }
+    return records.map(record => versions.has(record.id) ? { ...record, versions: versions.get(record.id) } : record);
+  }
+  public async saveImageTextRecord(draft: ImageTextDraft): Promise<ImageTextDraft> {
+    assertImageTextDraft(draft);
+    await this.ensureInitialized();
+    const sql = 'INSERT INTO image_text_records(id, created_at, record_json) VALUES(?, ?, ?) ON CONFLICT(id) DO UPDATE SET record_json = excluded.record_json';
+    const params = [draft.id, draft.createdAt, JSON.stringify({ ...draft, versions: undefined })];
+    const run = (query: string, values: any[] = []) => this.nativeDb ? this.nativeDb.prepare(query).run(...values) : this.wasmDb.run(query, values);
+    run('BEGIN');
+    try {
+      run(sql,params);
+      run('DELETE FROM image_text_page_versions WHERE record_id = ?', [draft.id]);
+      for (const version of draft.versions || []) run('INSERT INTO image_text_page_versions(id,record_id,page_id,asset_id,version_json) VALUES(?,?,?,?,?)',
+        [version.id,draft.id,version.pageId,version.assetId,JSON.stringify(version)]);
+      run('COMMIT');
+    } catch (error) { run('ROLLBACK'); throw error; }
+    if (!this.nativeDb) this.flushWasmToDisk();
+    return draft;
+  }
+  public async queueImageTextCleanup(id: string, assetIds: string[]): Promise<void> {
+    await this.ensureInitialized();
+    const query = 'INSERT OR REPLACE INTO image_text_cleanup(id,asset_ids_json) VALUES(?,?)';
+    if (this.nativeDb) this.nativeDb.prepare(query).run(id,JSON.stringify(assetIds));
+    else { this.wasmDb.run(query,[id,JSON.stringify(assetIds)]); this.flushWasmToDisk(); }
+  }
+  public async pendingImageTextCleanup(): Promise<Array<{id:string;assetIds:string[]}>> {
+    await this.ensureInitialized();
+    const query = 'SELECT * FROM image_text_cleanup';
+    let rows: any[] = [];
+    if (this.nativeDb) rows = this.nativeDb.prepare(query).all();
+    else { const stmt = this.wasmDb.prepare(query); try { while (stmt.step()) rows.push(stmt.getAsObject()); } finally { stmt.free(); } }
+    return rows.map(row => ({id:row.id,assetIds:JSON.parse(row.asset_ids_json)}));
+  }
+  public async completeImageTextCleanup(id: string): Promise<void> {
+    await this.ensureInitialized();
+    if (this.nativeDb) this.nativeDb.prepare('DELETE FROM image_text_cleanup WHERE id = ?').run(id);
+    else { this.wasmDb.run('DELETE FROM image_text_cleanup WHERE id = ?',[id]); this.flushWasmToDisk(); }
+  }
+  public async deleteImageTextRecord(id: string): Promise<void> {
+    await this.ensureInitialized();
+    const run = (query: string) => this.nativeDb ? this.nativeDb.prepare(query).run(id) : this.wasmDb.run(query,[id]);
+    if (this.nativeDb) this.nativeDb.exec('BEGIN'); else this.wasmDb.run('BEGIN');
+    try {
+      run('DELETE FROM image_text_page_versions WHERE record_id = ?'); run('DELETE FROM image_text_records WHERE id = ?');
+      if (this.nativeDb) this.nativeDb.exec('COMMIT'); else this.wasmDb.run('COMMIT');
+    } catch (error) { if (this.nativeDb) this.nativeDb.exec('ROLLBACK'); else this.wasmDb.run('ROLLBACK'); throw error; }
+    if (!this.nativeDb) this.flushWasmToDisk();
+  }
+
   public async listKnowledgeDocs(): Promise<DBKnowledgeDocument[]> {
     await this.ensureInitialized();
     const sql = `SELECT * FROM knowledge_documents ORDER BY uploaded_at DESC`;
@@ -691,7 +817,7 @@ export class LocalSQLiteManager {
 
   public async getDatabaseInfo(): Promise<DatabaseStatusInfo> {
     await this.ensureInitialized();
-    const totalCount = await this.getTableCount('history_records');
+    const totalCount = await this.getTableCount('history_records') + await this.getTableCount('image_text_records');
     const knowledgeDocCount = await this.getTableCount('knowledge_documents');
     let dbSizeBytes = 0;
     try {

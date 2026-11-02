@@ -2,7 +2,7 @@ import type { LinkDigestDetails } from '../../electron/services/linkDigestProvid
 
 export type VideoPlatform = 'douyin' | 'xiaohongshu';
 
-export type ActiveNavTab = 'workbench' | 'history' | 'settings' | 'accounts';
+export type ActiveNavTab = 'workbench' | 'image-text' | 'history' | 'settings' | 'accounts';
 
 export interface ParsedVideoInfo {
   platform: VideoPlatform;
@@ -12,6 +12,8 @@ export interface ParsedVideoInfo {
   durationSec: number;
   transcript: string;
   publishedText?: string;
+  contentKind?: 'video' | 'image-text' | 'unknown';
+  contentKindEvidence?: string;
   transcriptionStatus?: 'succeeded' | 'failed' | 'empty' | 'not_video' | 'partial';
   extractionDetails?: LinkDigestDetails;
   transcriptionMessage?: string;

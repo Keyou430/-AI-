@@ -73,7 +73,10 @@ export function parseLinkDigestResponse(payload: unknown, platform: VideoPlatfor
   const status = transcript.trim() ? warnings.length ? 'partial' : 'succeeded' : 'empty';
   const message = status === 'partial' ? '口播已返回，但完整性待核对，请查看提取说明。'
     : status === 'empty' ? '未返回有效口播，已保留发布文案及可用图文；可将图文素材填入编辑区后再二创。' : undefined;
-  const data: ParsedVideoData = { platform, extractedUrl: url, title: text(raw.title) || publishedText.slice(0, 80) || '链接提取内容',
+  const videoEvidence = duration > 0 || transcript.trim() || details.onScreen.length > 0;
+  const contentKind = videoEvidence ? 'video' : images.length > 0 ? 'image-text' : 'unknown';
+  const contentKindEvidence = videoEvidence ? '厂商返回视频时长、口播或视频时间轴' : images.length > 0 ? 'LinkDigest images：文档定义为图文帖逐图结果' : '缺少可靠类型凭据';
+  const data: ParsedVideoData = { contentKind, contentKindEvidence, platform, extractedUrl: url, title: text(raw.title) || publishedText.slice(0, 80) || '链接提取内容',
     author: text(raw.author) || '未知作者', durationSec: duration, transcript, publishedText,
     transcriptionStatus: status, ...(message ? { transcriptionMessage: message } : {}), extractionDetails: details,
     visualSummary: '', suggestedCameraWork: '' };
@@ -95,7 +98,7 @@ function httpFailure(status: number): VideoParseResponse {
     errorMessage: messages[status] || 'LinkDigest 服务暂时异常（HTTP ' + status + '），未自动重新提交提取。' };
 }
 
-export async function readLinkDigest(input: { url: string; platform: VideoPlatform; apiKey: string; maxCredits?: number },
+export async function readLinkDigest(input: { url: string; platform: VideoPlatform; apiKey: string; maxCredits?: number; endpoint?: string },
   onError?: (error: unknown) => void, signal?: AbortSignal): Promise<VideoParseResponse> {
   signal?.throwIfAborted();
   if (!input.apiKey) return { success: false, errorCode: 'API_ERROR', errorMessage: '请先在设置中保存 LinkDigest 接口密钥。' };
@@ -104,10 +107,13 @@ export async function readLinkDigest(input: { url: string; platform: VideoPlatfo
     return { success: false, errorCode: 'API_ERROR', errorMessage: 'LinkDigest 单次积分上限须为 1 至 1000 的整数。' };
   }
   const requestSignal = AbortSignal.any([AbortSignal.timeout(timeoutMs), ...(signal ? [signal] : [])]);
+  const base = input.endpoint?.replace(/\/+$/, '') || origin;
+  const address = new URL(base);
+  if (address.protocol !== 'https:' || address.username || address.password || address.search || address.hash) return { success: false, errorCode: 'API_ERROR', errorMessage: '内容提取接口地址无效。' };
   const headers = { Authorization: 'Bearer ' + input.apiKey, 'Content-Type': 'application/json' };
   let jobId: string | undefined;
   try {
-    let response = await fetch(origin + '/api/v1/digest', { method: 'POST', headers, redirect: 'error', signal: requestSignal,
+    let response = await fetch(base + '/api/v1/digest', { method: 'POST', headers, redirect: 'error', signal: requestSignal,
       body: JSON.stringify({ url: input.url, format: 'json', depth: 'full', partial_ok: false, max_credits: maxCredits }) });
     while (true) {
       if (response.status !== 200 && response.status !== 202) {
@@ -125,7 +131,7 @@ export async function readLinkDigest(input: { url: string; platform: VideoPlatfo
       jobId = typeof pending.jobId === 'string' ? pending.jobId : jobId;
       if (!jobId) return { success: false, errorCode: 'API_ERROR', errorMessage: 'LinkDigest 未返回任务编号，未自动重新提交。' };
       await delay(1000, undefined, { signal: requestSignal });
-      response = await fetch(origin + '/api/v1/digest/' + encodeURIComponent(jobId) + '?wait=20',
+      response = await fetch(base + '/api/v1/digest/' + encodeURIComponent(jobId) + '?wait=20',
         { method: 'GET', headers, redirect: 'error', signal: requestSignal });
     }
   } catch {

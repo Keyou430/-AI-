@@ -15,7 +15,9 @@ export function getExtractedText(content: ParsedVideoInfo): string {
 
 /** 判断可用的图文结果，不把已知视频的口播提取失败当作图文成功。 */
 export function isImageTextContent(content: ParsedVideoInfo | null): boolean {
-  if (!content || content.transcript.trim()) return false;
+  if (!content || content.contentKind === 'video') return false;
+  if (content.contentKind === 'image-text') return true;
+  if (content.transcript.trim()) return false;
   if (content.transcriptionStatus === 'not_video') return true;
   const details = content.extractionDetails;
   return content.transcriptionStatus !== 'failed' && content.durationSec === 0 &&

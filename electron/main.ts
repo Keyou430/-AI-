@@ -1,6 +1,12 @@
+import { ImageTextAssets } from './services/imageTextAssets';
+import { recoverImageTextCleanup } from './services/imageTextDeletion';
+import { ImageAssetLocationService } from './services/imageAssetLocation';
+import { registerImageTextHandlers } from './services/imageTextIpc';
 import { StorageLocationService } from './services/storageLocation';
 import { userFacingError } from './services/userFacingError';
 import { LocalProviderService } from './services/localProviderService';
+import type { ProviderModuleInput } from './services/providerTypes';
+import { testProviderConnection } from './services/providerConnectionTest';
 import { app, BrowserWindow, ipcMain, dialog, shell, safeStorage, Menu } from 'electron';
 import { AuthError } from './services/authError';
 import { createDesktopAuth } from './services/desktopAuth';
@@ -42,6 +48,7 @@ app.on('child-process-gone', (_event, details) => {
 });
 
 let storageLocation: StorageLocationService;
+let imageAssetLocation: ImageAssetLocationService;
 let sqliteService: LocalSQLiteManager;
 let authService: ReturnType<typeof createDesktopAuth>;
 const localProviders = new LocalProviderService(app.getPath('userData'), safeStorage);
@@ -58,6 +65,15 @@ async function withTask<T>(senderId: number, task: (signal: AbortSignal) => Prom
   try { return authService instanceof RemoteAuthService ?
     await authService.runAuthorizedTask(senderId, task, controller.signal) : await task(controller.signal); }
   finally { tasks.delete(controller); if (!tasks.size) activeTasks.delete(senderId); }
+}
+
+/** 模型接口配置只读取本机加密保存的那份（保存时已校验 HTTPS），不接受界面传入。 */
+function storedLlmConfig(): LLMConnectionConfig {
+  const stored = localProviders.read();
+  if (!stored.llmApiKey || !stored.llmBaseUrl || !stored.llmModel) {
+    throw new Error('请先在“系统设置 → API 接口配置”保存本设备的模型接口地址、模型名称和接口密钥。');
+  }
+  return { apiKey: stored.llmApiKey, baseURL: stored.llmBaseUrl, model: stored.llmModel };
 }
 
 function handle(channel: string, listener: (event: IpcMainInvokeEvent, payload: any, operationId: string) => any,
@@ -160,12 +176,16 @@ app.whenReady().then(async () => {
     mainWindow?.show();
     mainWindow?.focus();
   });
-  storageLocation = new StorageLocationService(app.getPath('userData'));
+  imageAssetLocation = new ImageAssetLocationService(app.getPath('userData'));
+  storageLocation = new StorageLocationService(app.getPath('userData'), imageAssetLocation.followsData());
   sqliteService = new LocalSQLiteManager(storageLocation.activatePending(), (error) => {
     runtimeLogger.write('warn', 'database.engine-fallback', { error, engine: 'sqlite3-wasm' });
   });
+  imageAssetLocation.activatePending(storageLocation.get().directory);
   authService = createDesktopAuth(sqliteService, path.join(__dirname, '..'), __dirname, app.getPath('userData'), runtimeLogger);
   await sqliteService.ensureInitialized();
+  await recoverImageTextCleanup(sqliteService,new ImageTextAssets(imageAssetLocation.root(storageLocation.get().directory)))
+    .catch(error => runtimeLogger.write('warn','image-text.cleanup-pending',{error}));
   const database = await sqliteService.getDatabaseInfo();
   runtimeLogger.write('info', 'database.ready', { engine: database.engine });
   createWindow();
@@ -196,14 +216,23 @@ handle('video:parse', async (event, payload: VideoParseRequest, operationId) => 
   signal.throwIfAborted(); return result;
 }));
 
-handle('llm:test-connection', async (event, config: LLMConnectionConfig, operationId) => withTask(event.sender.id, async signal => {
-  const result = await testLLMConnection((() => { const stored = localProviders.read(); return stored.llmApiKey ?
-      { apiKey: stored.llmApiKey, baseURL: stored.llmBaseUrl, model: stored.llmModel } : config; })(), error => runtimeLogger.write('error', 'service.llm-connection-failed', { operationId, error }), signal);
+handle('llm:test-connection', async (event, _ignoredRendererConfig: unknown, operationId) => withTask(event.sender.id, async signal => {
+  const result = await testLLMConnection(storedLlmConfig(), error => runtimeLogger.write('error', 'service.llm-connection-failed', { operationId, error }), signal);
   signal.throwIfAborted(); return result;
 }));
 
+registerImageTextHandlers({ handle, withTask, database: () => sqliteService,
+  directory: () => imageAssetLocation.root(storageLocation.get().directory), assetLocation: () => imageAssetLocation, dataDirectory: () => storageLocation.get().directory, providers: localProviders, window: () => mainWindow, onCleanupError: error => runtimeLogger.write('warn','image-text.cleanup-pending',{error}),
+  onCheck: (targetId, kind, passed) => runtimeLogger.write('info', 'image-text.check', { targetId, kind, outcome: passed ? 'success' : 'failed' }) });
+
 handle('providers:get', async () => ({ success: true, config: localProviders.publicSettings() }));
+handle('providers:reset', async () => ({ success: true, config: localProviders.reset() }));
 handle('providers:save', async (_event, input) => ({ success: true, config: localProviders.save(input) }));
+handle('providers:save-module', async (_event, input: ProviderModuleInput) => ({ success: true, config: localProviders.saveModule(input.module, input.config) }));
+handle('providers:test-module', async (event, input: ProviderModuleInput & { rawInput?: string }) => withTask(event.sender.id, async signal => {
+  const config = localProviders.prepareModule(input.module, input.config);
+  return testProviderConnection(input.module, config, input.rawInput, signal);
+}));
 
 handle('llm:generate-stream', async (event, payload: LLMGenerateRequest, operationId) => withTask(event.sender.id, async signal => {
   const sender = event.sender;
@@ -212,8 +241,8 @@ handle('llm:generate-stream', async (event, payload: LLMGenerateRequest, operati
       signal.throwIfAborted();
       if (!sender.isDestroyed()) sender.send('llm:stream-chunk', { requestId: payload.requestId, chunk });
     };
-    const fullText = await streamGenerateScript({ ...payload, config: (() => { const stored = localProviders.read(); return stored.llmApiKey ?
-        { apiKey: stored.llmApiKey, baseURL: stored.llmBaseUrl, model: stored.llmModel } : payload.config; })() }, onChunk, signal);
+    // 只使用本机加密保存的配置，忽略界面传入的 config，避免绕过 HTTPS 校验或改写请求目标。
+    const fullText = await streamGenerateScript({ ...payload, config: storedLlmConfig() }, onChunk, signal);
     signal.throwIfAborted();
     await authService.requireUser(sender.id);
     signal.throwIfAborted();

@@ -70,3 +70,16 @@ test('鉴权、余额和限流失败不自动重试、不回显供应商错误�
     }
   } finally { globalThis.fetch = original; }
 });
+
+test('可编辑的姚安基础地址用于两个平台，保留平台路径与鉴权参数', async () => {
+  const original = globalThis.fetch; const urls: URL[] = [];
+  globalThis.fetch = async input => { urls.push(new URL(String(input))); return Response.json(fixture); };
+  try {
+    for (const rawInput of ['https://v.douyin.com/demo/', 'https://xhslink.cn/demo/']) {
+      assert.equal((await parseShortVideoLink({ rawInput, apiProvider: 'yaoan', apiEndpoint: 'https://proxy.example/gateway/', apiKey: 'proxy-key' })).success, true);
+    }
+    assert.deepEqual(urls.map(url => url.origin), ['https://proxy.example', 'https://proxy.example']);
+    assert.deepEqual(urls.map(url => url.pathname), ['/gateway/api/plugins/douyin/dy_video_to_text', '/gateway/api/plugins/xiaohongshu/video_to_text']);
+    assert.equal(urls[0].searchParams.get('api_key'), 'proxy-key'); assert.equal(urls[1].searchParams.get('apiKey'), 'proxy-key');
+  } finally { globalThis.fetch = original; }
+});

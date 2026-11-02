@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useImageTextStore } from './useImageTextStore';
 import { useAppStore } from './useAppStore';
 import type { AuthUser } from '../types';
 import '../services/ipcClient';
@@ -49,7 +50,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
   signOut: async () => {
     try { await window.electronAPI?.logout(); }
-    finally { useAppStore.getState().updateSettings({ llmApiKey: '', videoParserApiKey: '' }); set({ user: null, error: null }); }
+    finally { useImageTextStore.getState().reset(); useAppStore.getState().updateSettings({ llmApiKey: '', videoParserApiKey: '' }); set({ user: null, error: null }); }
   },
-  invalidate: (message) => { useAppStore.getState().updateSettings({ llmApiKey: '', videoParserApiKey: '' }); set({ user: null, error: message }); },
+  invalidate: (message) => { useImageTextStore.getState().reset(); useAppStore.getState().updateSettings({ llmApiKey: '', videoParserApiKey: '' }); set({ user: null, error: message }); },
 }));

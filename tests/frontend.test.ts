@@ -223,3 +223,34 @@ test('图文提取自动填入正文与图片文字，编辑和恢复保留原�
   assert.equal(useAppStore.getState().editedTranscript, originalText);
   assert.equal(useAppStore.getState().parsedVideo?.extractionDetails?.images[0].ocr, source.extractionDetails.images[0].ocr);
 });
+
+test('进入历史页重置旧选择和筛选，再按全部内容加载', async () => {
+  const record = historyRecord('newest-entry');
+  let receivedFilter: unknown;
+  Object.assign(globalThis, { window: { electronAPI: {
+    listHistoryFromDB: async (filter: unknown) => { receivedFilter = filter; return { success: true, records: [record] }; },
+    getDatabaseInfo: async () => ({ success: true, info: { engine: 'sqlite3-wasm', dbPath: 'test', totalCount: 1, dbSizeBytes: 0 } }),
+  } } });
+  useAppStore.setState({ activeNav: 'settings', selectedHistoryId: 'old-entry', historyFilterPlatform: 'douyin', historySearchQuery: '旧筛选' });
+  useAppStore.getState().setActiveNav('history');
+  assert.equal(useAppStore.getState().selectedHistoryId, null);
+  assert.equal(useAppStore.getState().historyFilterPlatform, 'all'); assert.equal(useAppStore.getState().historySearchQuery, '');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(receivedFilter, { search: '', platform: 'all' });
+  assert.equal(useAppStore.getState().historyRecords[0].id, record.id);
+});
+test('历史页视频刷新完成后保留已选图文，避免异步覆盖', async () => {
+  const video = historyRecord('video-entry');
+  let resolveList!: (value: { success: boolean; records: import('../src/types').HistoryRecord[] }) => void;
+  Object.assign(globalThis, { window: { electronAPI: {
+    listHistoryFromDB: () => new Promise(resolve => { resolveList = resolve; }),
+    getDatabaseInfo: async () => ({ success: true, info: { engine: 'sqlite3-wasm', dbPath: 'test', totalCount: 1, dbSizeBytes: 0 } }),
+  } } });
+  useAppStore.setState({ activeNav: 'history', selectedHistoryId: null });
+  const loading = useAppStore.getState().loadHistoryFromSQLite();
+  useAppStore.getState().setSelectedHistoryId('image-entry');
+  resolveList({ success: true, records: [video] });
+  await loading;
+  assert.equal(useAppStore.getState().selectedHistoryId, 'image-entry');
+  useAppStore.setState({ activeNav: 'workbench' });
+});

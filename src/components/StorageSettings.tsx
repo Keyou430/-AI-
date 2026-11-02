@@ -44,7 +44,7 @@ export function StorageSettings() {
         存储地址
       </h3>
       <p className="muted-copy">
-        历史记录与公司知识库保存在此目录。更改后，下次启动迁移并生效，原目录保留备份。
+        历史记录与公司知识库保存在此目录，未单独配置的图文素材也跟随此地址。更改后，下次启动迁移并生效，原目录保留备份。
       </p>
       <label className="block">
         <span className="field-label">当前存储地址</span>

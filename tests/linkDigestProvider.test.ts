@@ -141,3 +141,16 @@ test('LinkDigest 保留图文标签供关键词展示，不把标签或分析要
   assert.equal(result.data?.transcript, '');
   assert.deepEqual(result.data?.extractionDetails?.keyPoints, fixture.key_points);
 });
+
+test('可编辑的 LinkDigest 基础地址同时用于提交与轮询，不跟随返回地址', async () => {
+  const original = globalThis.fetch; const urls: string[] = [];
+  globalThis.fetch = async input => {
+    urls.push(String(input));
+    return urls.length === 1 ? Response.json({ pending: true, jobId: 'proxy-job', poll: 'https://other.example/poll' }, { status: 202 }) : Response.json(fixture);
+  };
+  try {
+    const result = await parseShortVideoLink({ rawInput: link, apiProvider: 'linkdigest', apiEndpoint: 'https://proxy.example/gateway/', apiKey: 'proxy-key' });
+    assert.equal(result.success, true);
+    assert.deepEqual(urls, ['https://proxy.example/gateway/api/v1/digest', 'https://proxy.example/gateway/api/v1/digest/proxy-job?wait=20']);
+  } finally { globalThis.fetch = original; }
+});

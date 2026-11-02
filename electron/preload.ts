@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { ImageTextDraft } from './services/imageTextTypes';
 
 export interface StreamChunkEvent {
   requestId: string;
@@ -19,7 +20,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getStorageLocation: () => ipcRenderer.invoke('storage:get'),
   chooseStorageLocation: () => ipcRenderer.invoke('storage:choose'),
   getProviderSettings: () => ipcRenderer.invoke('providers:get'),
+  resetProviderSettings: () => ipcRenderer.invoke('providers:reset'),
   saveProviderSettings: (input: unknown) => ipcRenderer.invoke('providers:save', input),
+  saveProviderModule: (input: unknown) => ipcRenderer.invoke('providers:save-module', input),
+  testProviderModule: (input: unknown) => ipcRenderer.invoke('providers:test-module', input),
   getAuthStatus: () => ipcRenderer.invoke('auth:status'),
   openLogFolder: () => ipcRenderer.invoke('runtime:open-log-folder'),
   reportRuntimeError: (payload: { kind: 'error' | 'unhandled-rejection'; name?: string; stack?: string }) =>
@@ -45,6 +49,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
   generateScriptStream: (payload: any) => ipcRenderer.invoke('llm:generate-stream', payload),
   exportFile: (payload: { defaultFilename: string; content: string; format: 'txt' | 'doc' }) =>
     ipcRenderer.invoke('file:export', payload),
+
+  getImageAssetLocation: () => ipcRenderer.invoke('image-text:storage:get'),
+  chooseImageAssetLocation: () => ipcRenderer.invoke('image-text:storage:choose'),
+  followDataImageAssetLocation: () => ipcRenderer.invoke('image-text:storage:follow'),
+  getImageTextDeletionInfo: (id: string) => ipcRenderer.invoke('image-text:deletion-info', id),
+  planImageText: (input: any) => ipcRenderer.invoke('image-text:plan', input),
+  generateImageText: (input: any) => ipcRenderer.invoke('image-text:generate', input),
+  cancelImageText: (taskId: string) => ipcRenderer.invoke('image-text:cancel', taskId),
+  selectImageTextReferences: (kind: 'style' | 'scene', draft: ImageTextDraft) => ipcRenderer.invoke('image-text:references', { kind, draft }),
+  readImageTextAsset: (id: string) => ipcRenderer.invoke('image-text:asset', id),
+  listImageTextHistory: () => ipcRenderer.invoke('image-text:list'),
+  saveImageTextHistory: (draft: any) => ipcRenderer.invoke('image-text:save', draft),
+  deleteImageTextHistory: (id: string) => ipcRenderer.invoke('image-text:delete', id),
+  exportImageText: (draft: any, forbiddenWords: string[] = []) => ipcRenderer.invoke('image-text:export', { draft, forbiddenWords }),
 
   // Phase 2: SQLite 本地历史记录接口
   listHistoryFromDB: (filter?: { search?: string; platform?: 'all' | 'douyin' | 'xiaohongshu' }) =>

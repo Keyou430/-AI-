@@ -79,20 +79,67 @@ export function ScriptResult({
       }}
       className="flex min-h-0 flex-1 flex-col"
     >
-      {!hideToolbar && (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
-          <div className="flex items-center gap-2">
-            <h2 className="section-title">脚本</h2>
-            {busy && (
-              <span
-                role="status"
-                className="flex items-center gap-1.5 text-xs text-muted-foreground"
+      <div className="flex shrink-0 flex-wrap items-center gap-1 border-b px-2 py-2">
+        <Tabs.List className="tab-list" aria-label="脚本视图">
+          {outputTabs
+            .filter((value) => value !== 'source' || source)
+            .map((value) => (
+              <Tabs.Tab key={value} value={value} className="tab px-2">
+                {labels[value]}
+              </Tabs.Tab>
+            ))}
+        </Tabs.List>
+        {!busy && totalShots > 1 && (tab === 'storyboard' || tab === 'techniques') && (
+          <nav aria-label="镜头分页" className="flex shrink-0 items-center gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={currentPage === 0}
+              aria-label="上一个镜头"
+              onClick={() => {
+                setShotPage(currentPage - 1);
+                if (scroll.current) scroll.current.scrollTop = 0;
+              }}
+            >
+              上一镜
+            </Button>
+            <label className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+              <span className="sr-only">选择镜头</span>
+              <select
+                aria-label="选择镜头"
+                className="field w-auto"
+                value={currentPage}
+                onChange={(event) => {
+                  setShotPage(Number(event.target.value));
+                  if (scroll.current) scroll.current.scrollTop = 0;
+                }}
               >
-                <LoaderCircle size={13} className="animate-spin" />
-                生成中
+                {script?.shots.map((shot, index) => (
+                  <option key={shot.shotNumber} value={index}>
+                    镜头 {shot.shotNumber}
+                  </option>
+                ))}
+              </select>
+              <span className="shrink-0">
+                {currentPage + 1} / {totalShots}
               </span>
-            )}
-          </div>
+            </label>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={currentPage === totalShots - 1}
+              aria-label="下一个镜头"
+              onClick={() => {
+                setShotPage(currentPage + 1);
+                if (scroll.current) scroll.current.scrollTop = 0;
+              }}
+            >
+              下一镜
+            </Button>
+          </nav>
+        )}
+        {!hideToolbar && <div className="ml-auto flex items-center gap-1">
+          {busy && <span role="status" className="flex items-center gap-1 text-xs text-muted-foreground"><LoaderCircle size={13} className="animate-spin" />生成中</span>}
           <div className="flex items-center gap-1">
             <Button
               size="sm"
@@ -116,66 +163,9 @@ export function ScriptResult({
               </Button>
             )}
           </div>
-        </div>
-      )}
-      <Tabs.List className="tab-list shrink-0 border-b px-2 py-2" aria-label="脚本视图">
-        {outputTabs
-          .filter((value) => value !== 'source' || source)
-          .map((value) => (
-            <Tabs.Tab key={value} value={value} className="tab">
-              {labels[value]}
-            </Tabs.Tab>
-          ))}
-      </Tabs.List>
-      {!busy && totalShots > 1 && (tab === 'storyboard' || tab === 'techniques') && (
-        <nav aria-label="镜头分页" className="flex shrink-0 items-center gap-2 border-b px-4 py-2">
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={currentPage === 0}
-            aria-label="上一个镜头"
-            onClick={() => {
-              setShotPage(currentPage - 1);
-              if (scroll.current) scroll.current.scrollTop = 0;
-            }}
-          >
-            上一镜
-          </Button>
-          <label className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-            <span className="sr-only">选择镜头</span>
-            <select
-              aria-label="选择镜头"
-              className="field w-auto"
-              value={currentPage}
-              onChange={(event) => {
-                setShotPage(Number(event.target.value));
-                if (scroll.current) scroll.current.scrollTop = 0;
-              }}
-            >
-              {script?.shots.map((shot, index) => (
-                <option key={shot.shotNumber} value={index}>
-                  镜头 {shot.shotNumber}
-                </option>
-              ))}
-            </select>
-            <span className="shrink-0">
-              {currentPage + 1} / {totalShots}
-            </span>
-          </label>
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={currentPage === totalShots - 1}
-            aria-label="下一个镜头"
-            onClick={() => {
-              setShotPage(currentPage + 1);
-              if (scroll.current) scroll.current.scrollTop = 0;
-            }}
-          >
-            下一镜
-          </Button>
-        </nav>
-      )}
+
+        </div>}
+      </div>
       {!hasText && !busy ? (
         <Tabs.Panel
           value={tab}
@@ -194,6 +184,7 @@ export function ScriptResult({
           <div className="relative min-h-0 flex-1">
             <div
               ref={scroll}
+              data-testid="script-result-scroll"
               className="h-full overflow-y-auto px-4 py-5 sm:px-6"
               onScroll={() => {
                 const el = scroll.current;

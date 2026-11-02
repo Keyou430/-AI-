@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Tabs } from '@base-ui/react/tabs';
 import { Eye, FolderOpen, LoaderCircle, Plus, Trash2, Upload, X } from 'lucide-react';
+import { ImageAssetStorageSettings } from '../components/ImageAssetStorageSettings';
 import { StorageSettings } from '../components/StorageSettings';
 import { ProviderSettingsForm } from '../components/ProviderSettingsForm';
 import { Button } from '../components/ui/Button';
@@ -286,7 +287,7 @@ export function SettingsView() {
             <section className="surface space-y-5 p-5 sm:p-6" aria-labelledby="provider-title">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h2 id="provider-title" className="section-title">
-                  接口密钥与内容提取
+                  API 接口配置
                 </h2>
               </div>
               <ProviderSettingsForm />
@@ -319,6 +320,7 @@ export function SettingsView() {
               </div>
             </details>
             <StorageSettings />
+            <ImageAssetStorageSettings />
           </Tabs.Panel>
         </div>
       </div>
