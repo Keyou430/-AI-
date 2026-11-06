@@ -20,6 +20,7 @@ async function preparePackagedAuth() {
   testAuthServer = await createAuthServer({ dataDirectory: path.join(dataDirectory, 'auth-fixture'), adminPassword: password });
   await new Promise(resolve => testAuthServer.listen(0, '127.0.0.1', resolve));
   const origin = new URL(JSON.parse(fs.readFileSync(path.join(applicationPath, 'dist-electron/auth-config.json'), 'utf8')).url).origin;
+  fs.writeFileSync(path.join(dataDirectory, 'auth-server-binding.json'), JSON.stringify({ version: 1, url: origin }));
   const fixtureOrigin = 'http://127.0.0.1:' + testAuthServer.address().port;
   globalThis.fetch = (input, init) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
@@ -137,6 +138,7 @@ app.on('browser-window-created', (_event, window) => {
       const manualRecord = (await call('listHistoryFromDB')).records.find(record => record.originalTranscript === '人工修订后的企业口播');
       assert.ok(manualRecord.conversationMessages[0].content.includes('人工修订后的企业口播'));
       assert.ok(manualRecord.sourceContent.transcript); assert.notEqual(manualRecord.sourceContent.transcript,manualRecord.originalTranscript);
+      await require(path.join(__dirname, "scriptParsingSmoke.cjs"))({ window, call, waitFor, manualRecord });
       // 通过真实界面在 A 的迭代期间打开 B，确认旧请求不会覆盖 B。
       const otherRecord = {...manualRecord,id:'smoke-race-b',title:'切换记录B',
         originalTranscript:'记录B独立口播',rawGeneratedScript:'记录B独立脚本',
@@ -227,13 +229,13 @@ app.on('browser-window-created', (_event, window) => {
         await window.webContents.executeJavaScript('Array.from(document.querySelectorAll("[role=menuitem]")).find(el => el.textContent.trim() === ' + JSON.stringify(direction) + ').click()');
       };
       const imageHistory = async () => (await call('listImageTextHistory')).data;
-      const layoutDirectory = applicationPath.endsWith('.asar') ? path.join(__dirname, '..', 'release', 'three-module-layout-' + require(path.join(applicationPath, 'package.json')).version) : path.join(applicationPath, 'docs', '图文流程排查证据', '2026-10-30-三模块布局');
+      const layoutDirectory = applicationPath.endsWith('.asar') ? path.join(__dirname, '..', 'release', 'three-module-layout-' + require(path.join(applicationPath, 'package.json')).version) : path.join(applicationPath, 'docs', '图文流程排查证据', '2026-11-02-删除跳转-三模块布局');
       fs.mkdirSync(layoutDirectory, { recursive: true });
       const layoutChecks = [];
       const layoutEval = (fn, ...args) => window.webContents.executeJavaScript('(' + fn.toString() + ')(' + args.map(value => JSON.stringify(value)).join(',') + ')').catch(error => { throw new Error('布局脚本失败：' + fn.toString(), { cause: error }); });
       const layoutRecord = (id, details) => {
         layoutChecks.push({ id, status: 'PASS', details });
-        fs.writeFileSync(path.join(layoutDirectory, 'layout.json'), JSON.stringify({ date: '2026-10-30', version: require(path.join(applicationPath, 'package.json')).version, packaged: applicationPath.endsWith('.asar'), supplier: 'isolated fixtures', cases: layoutChecks }, null, 2), 'utf8');
+        fs.writeFileSync(path.join(layoutDirectory, 'layout.json'), JSON.stringify({ date: '2026-11-02', version: require(path.join(applicationPath, 'package.json')).version, packaged: applicationPath.endsWith('.asar'), supplier: 'isolated fixtures', cases: layoutChecks }, null, 2), 'utf8');
       };
       const captureLayout = async name => {
         await layoutEval(() => document.querySelectorAll("button[aria-label=关闭提示]").forEach(el => el.click()));
@@ -385,6 +387,10 @@ app.on('browser-window-created', (_event, window) => {
         const insertedBefore = await layoutEval(() => { const el = document.querySelector('select[aria-label=选择图片]'); return { ids: Array.from(el.options).map(option => option.value), selected: el.value, index: el.selectedIndex }; });
         assert.deepEqual(insertedBefore.ids.filter(id => id !== insertedBefore.selected), pageIdsBeforeInsert); assert.equal(insertedBefore.index, 1);
         await clickText('删除当前图'); await waitFor(window, 'document.querySelector("select[aria-label=选择图片]").options.length === 2');
+        const afterMiddleDeletion = await layoutEval(() => { const el = document.querySelector('select[aria-label=选择图片]'); return { ids: Array.from(el.options).map(option => option.value), selected: el.value, index: el.selectedIndex }; });
+        assert.deepEqual(afterMiddleDeletion.ids, pageIdsBeforeInsert); assert.equal(afterMiddleDeletion.selected, pageIdsBeforeInsert[1]);
+        assert.equal(await readLayoutLabel('图片内文字'), initialDraft.pages[1].text);
+        layoutRecord('D01-delete-next', { deletedId: insertedBefore.selected, ...afterMiddleDeletion, nextPageContentRetained: true });
         await layoutEval(() => { const el = document.querySelector('select[aria-label=选择图片]'); el.selectedIndex = 1; el.dispatchEvent(new Event('change', { bubbles: true })); });
         layoutRecord('U06-insert-before', insertedBefore);
         for (let count = 3; count <= 6; count++) {
@@ -409,7 +415,9 @@ app.on('browser-window-created', (_event, window) => {
           await layoutEval(() => { const el = document.querySelector('select[aria-label=选择图片]'); el.selectedIndex = el.options.length - 1; el.dispatchEvent(new Event('change', { bubbles: true })); });
           await clickText('删除当前图');
           await waitFor(window, 'document.querySelector("select[aria-label=选择图片]").options.length === ' + (count - 1));
+          assert.equal(await layoutEval(() => { const el = document.querySelector('select[aria-label=选择图片]'); return el.selectedIndex === el.options.length - 1; }), true);
         }
+        layoutRecord('D02-delete-last', { consecutiveLastPageDeletions: 4, previousPageSelected: true });
         // 单页隐藏翻页条，恢复两页后继续原有生成与优化流程。
         await layoutEval(() => { const el = document.querySelector('select[aria-label=选择图片]'); el.selectedIndex = 1; el.dispatchEvent(new Event('change', { bubbles: true })); });
         await clickText('删除当前图'); await waitFor(window, '!document.querySelector("[aria-label=图片分页]")');

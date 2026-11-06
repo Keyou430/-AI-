@@ -62,8 +62,10 @@ export const useImageTextStore = create<ImageTextState>((set, get) => ({
   },
   removePage: id => {
     const d = get().draft; if (!d || get().taskId || d.pages.length <= 1) return;
+    const index = d.pages.findIndex(p => p.id === id); if (index < 0) return;
     const pages = d.pages.filter(p => p.id !== id);
-    set({ draft: { ...d, pages }, activePageId: pages[0].id });
+    const activePageId = get().activePageId === id ? pages[Math.min(index, pages.length - 1)].id : get().activePageId;
+    set({ draft: { ...d, pages }, activePageId });
   },
   begin: (source, typeOrigin) => {
     if (get().taskId) throw new Error('图文任务正在执行，请先取消或等待完成。');
@@ -124,7 +126,8 @@ export const useImageTextStore = create<ImageTextState>((set, get) => ({
     try {
       for (const [index, page] of pages.entries()) {
         if (get().taskId !== taskId) return;
-        set({ progress: '正在生成受影响图片 ' + (index + 1) + ' / ' + pages.length });
+        set({ progress: '正在校验授权并生成受影响图片 ' + (index + 1) + ' / ' + pages.length });
+        let persisted = false;
         try {
           const snapshot = structuredClone(get().draft!);
           const result = await api().generateImageText({ draft: snapshot, pageId: page.id, taskId, usePreviousImage: pageId ? usePreviousImage : false });
@@ -132,7 +135,7 @@ export const useImageTextStore = create<ImageTextState>((set, get) => ({
           if (result.errorCode && ['AUTH_REQUIRED', 'ACCOUNT_DISABLED', 'AUTH_UNAVAILABLE'].includes(result.errorCode)) {
             set({ taskId: null, taskKind: null, progress: '', error: result.error || '授权状态不可用，已停止后续生图。' }); return;
           }
-          if (!result.success && ['AGNES_AUTH', 'AGNES_QUOTA', 'AGNES_RATE_LIMIT', 'IMAGE_AUTH', 'IMAGE_QUOTA', 'IMAGE_RATE_LIMIT'].includes(result.errorCode || '')) {
+          if (!result.success && ['AGNES_AUTH', 'AGNES_QUOTA', 'AGNES_RATE_LIMIT', 'IMAGE_AUTH', 'IMAGE_QUOTA', 'IMAGE_RATE_LIMIT', 'IMAGE_UNSUPPORTED'].includes(result.errorCode || '')) {
             const message = (result.error || '图片生成配置或额度不可用。') + ' 已停止后续生图，请处理后重试未完成图片。';
             const current = get().draft!;
             set({ draft: { ...current, pages: current.pages.map(p => p.id === page.id ? { ...p, error: message } : p) }, error: message });
@@ -141,16 +144,20 @@ export const useImageTextStore = create<ImageTextState>((set, get) => ({
           }
           if (!result.success || !result.data) throw new Error(result.error || '图片生成失败。');
           const current = get().draft!;
-          set({ draft: result.data.draft || appendPageVersion(current,page.id,result.data!,newId), ...(result.data.persistenceError ? {error:result.data.persistenceError} : {}) });
+          const completed = result.data.draft || appendPageVersion(current,page.id,result.data!,newId);
+          persisted = !!result.data.draft && !result.data.persistenceError;
+          set({ draft: completed, ...(result.data.persistenceError ? { error: result.data.persistenceError } : {}),
+            ...(persisted ? { savedDraftKey: JSON.stringify(completed),
+              records: [structuredClone(completed), ...get().records.filter(record => record.id !== completed.id)].sort((a,b) => b.createdAt.localeCompare(a.createdAt)) } : {}) });
         } catch (error) {
           if (get().taskId !== taskId) return;
           failed++;
           const current = get().draft!;
           set({ draft: { ...current, pages: current.pages.map(p => p.id === page.id ? { ...p, error: errorMessage(error) } : p) } });
         }
-        await get().save();
+        if (!persisted) await get().save();
       }
-      if (failed && get().taskId === taskId) set({ error: failed + ' 张图片未完成，旧图与成功页面已保留，可只重试未完成页面。' });
+      if (failed && get().taskId === taskId) set({ error: (pageId && get().draft!.pages.find(page => page.id === pageId)?.error) || failed + ' 张图片未完成，旧图与成功页面已保留，可只重试未完成页面。' });
     } catch (error) { if (get().taskId === taskId) set({ error: errorMessage(error) }); }
     finally { if (get().taskId === taskId) set({ taskId: null, taskKind: null, progress: '' }); }
   },

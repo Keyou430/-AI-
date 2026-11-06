@@ -16,7 +16,7 @@ import type { ImageTextDraft, ImageTextPlanInput, ImageReference } from './image
 type Listener = (event: IpcMainInvokeEvent, payload: any, operationId: string) => any;
 interface Dependencies {
   handle: (channel: string, listener: Listener) => void;
-  withTask: <T>(senderId: number, task: (signal: AbortSignal) => Promise<T>) => Promise<T>;
+  withTask: <T>(senderId: number, task: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal) => Promise<T>;
   database: () => LocalSQLiteManager;
   directory: () => string;
   dataDirectory: () => string;
@@ -48,7 +48,7 @@ export function registerImageTextHandlers(deps: Dependencies) {
     try { return await deps.withTask(event.sender.id, async parentSignal => {
       const signal = AbortSignal.any([parentSignal, controller.signal]);
       const data = await action(signal); signal.throwIfAborted(); return { success: true, data };
-    }); } finally { running.delete(key); }
+    }, controller.signal); } finally { running.delete(key); }
   }
   handle('image-text:storage:get', () => ({ success: true, data: deps.assetLocation().get(deps.dataDirectory()) }));
   handle('image-text:storage:choose', async () => {

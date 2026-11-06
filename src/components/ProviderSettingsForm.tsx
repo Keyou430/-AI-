@@ -41,6 +41,10 @@ function ProviderModuleCard({ module, initial, onBusyChange }: {
       videoParserEndpoint: endpoint,
       ...(provider === 'custom' ? { videoParserOptions: { ...DEFAULT_VIDEO_PARSER_OPTIONS } } : {}) });
   }
+  function imagePreset(provider: NonNullable<ProviderSettingsInput['imageProtocol']>) {
+    update({ ...IMAGE_PRESETS[provider],
+      imageApiKey: input.imageProtocol === provider && input.imageEndpoint === IMAGE_PRESETS[provider].imageEndpoint ? input.imageApiKey : '' });
+  }
   const field = (key: 'llmBaseUrl' | 'llmModel' | 'llmApiKey' | 'videoParserEndpoint' | 'videoParserApiKey' | 'imageEndpoint' | 'imageModel' | 'imageApiKey', label: string, secret = false, placeholder = '') =>
     <label className="block space-y-1.5 text-sm" key={key}>{label}
       <input name={key} type={secret ? 'password' : 'text'} autoComplete="off" value={input[key] || ''}
@@ -66,30 +70,31 @@ function ProviderModuleCard({ module, initial, onBusyChange }: {
         {module === 'llm' && <><button type="button" className={presetClass} onClick={() => update({ ...DEEPSEEK_PRESET,
           llmApiKey: input.llmBaseUrl.replace(/\/+$/, '') === DEEPSEEK_PRESET.llmBaseUrl ? input.llmApiKey : '' })}>使用 DeepSeek 配置</button>
           <button type="button" className={presetClass} onClick={() => document.getElementsByName('llmBaseUrl')[0]?.focus()}>自定义接口</button></>}
-        {module === 'image' && <>{(['agnes', 'seedream'] as const).map(provider => <button key={provider} type="button" className={presetClass}
-          onClick={() => update({ ...IMAGE_PRESETS[provider], imageApiKey: input.imageProtocol === provider && input.imageEndpoint === IMAGE_PRESETS[provider].imageEndpoint ? input.imageApiKey : '' })}>
-          使用 {provider === 'agnes' ? 'Agnes' : 'Seedream'} 配置</button>)}
-          <button type="button" className={presetClass} onClick={() => document.getElementsByName('imageEndpoint')[0]?.focus()}>自定义兼容接口</button></>}
+        {module === 'image' && <>{(['agnes', 'seedream', 'glm', 'sub2api'] as const).map(provider => <button key={provider} type="button" className={presetClass}
+          onClick={() => imagePreset(provider)}>
+          使用 {provider === 'agnes' ? 'Agnes' : provider === 'seedream' ? 'Seedream' : provider === 'glm' ? 'GLM' : 'Sub2API（异步生图）'} 配置</button>)}</>}
         {module === 'extraction' && <><button type="button" className={presetClass} onClick={() => extractionPreset('linkdigest')}>使用 LinkDigest 配置</button>
           <button type="button" className={presetClass} onClick={() => extractionPreset('yaoan')}>使用姚安配置</button>
           <button type="button" className={presetClass} onClick={() => extractionPreset('custom')}>自定义接口</button></>}
       </div>
       <div className="grid gap-4 md:grid-cols-2">
-        {module === 'llm' && <><label className="block space-y-1.5 text-sm">接口类型<input className="field" value="OpenAI 兼容协议" readOnly /></label>
+        {module === 'llm' && <><label className="block space-y-1.5 text-sm">接口类型<input className="field" value="OpenAI 协议" readOnly /></label>
           {field('llmBaseUrl', '接口地址', false, '填写模型服务的基础地址')}{field('llmModel', '模型名称')}{field('llmApiKey', 'API Key', true)}</>}
-        {module === 'image' && <><label className="block space-y-1.5 text-sm">接口协议
-          <select name="imageProtocol" className="field" value={input.imageProtocol} onChange={event => update({ imageProtocol: event.target.value as ProviderSettingsInput['imageProtocol'], imageApiKey: '' })}>
-            <option value="agnes">Agnes 兼容</option><option value="seedream">Seedream 兼容</option>
+        {module === 'image' && <><label className="block space-y-1.5 text-sm">图片厂商
+          <select name="imageProtocol" className="field" value={input.imageProtocol} onChange={event => imagePreset(event.target.value as NonNullable<ProviderSettingsInput['imageProtocol']>)}>
+            <option value="agnes">Agnes</option><option value="seedream">Seedream</option><option value="glm">GLM</option><option value="sub2api">Sub2API（异步生图）</option>
           </select></label>{field('imageEndpoint', '接口完整地址')}{field('imageModel', '模型名称')}{field('imageApiKey', 'API Key', true)}</>}
         {module === 'extraction' && <><label className="block space-y-1.5 text-sm">接口类型
           <select name="videoParserProvider" className="field" value={input.videoParserProvider} onChange={event => extractionPreset(event.target.value as NonNullable<ProviderSettingsInput['videoParserProvider']>)}>
-            <option value="custom">自定义提取协议</option><option value="linkdigest">LinkDigest 兼容</option><option value="yaoan">姚安兼容</option>
+            <option value="custom">自定义提取协议</option><option value="linkdigest">LinkDigest</option><option value="yaoan">姚安</option>
           </select></label>{field('videoParserEndpoint', input.videoParserProvider === 'custom' ? '接口完整地址' : '接口基础地址')}{field('videoParserApiKey', 'API Key', true)}</>}
       </div>
+      {module === 'image' && input.imageProtocol === 'glm' && <p className="text-xs text-muted-foreground" data-testid="glm-image-limits">智谱托管 GLM-Image 接口仅支持文字生图，整页提示词最多 1000 字符。如需参考图或沿用当前图，请切换 Agnes／Seedream。</p>}
+      {module === 'image' && input.imageProtocol === 'sub2api' && <p className="text-xs text-muted-foreground" data-testid="sub2api-image-info">支持文字生图、参考图与文字一起生成，以及沿用当前图优化。提交后等待后台任务完成；取消仅停止本机等待，服务端任务可能继续执行。</p>}
       <details className="rounded-lg border border-border p-3 text-sm"><summary className="cursor-pointer font-medium">高级配置</summary>
-        {module === 'llm' && <p className="mt-3 text-xs text-muted-foreground">使用 OpenAI 兼容的对话接口与流式输出。模型名称可填写服务商提供的模型标识。</p>}
-        {module === 'image' && <p className="mt-3 text-xs text-muted-foreground">按所选协议提交图片请求。比例跟随图文草案，参考图支持原帖风格、按页素材和沿用当前图优化。
-          {input.imageProtocol === 'seedream' ? 'Seedream 使用 2K 尺寸，单次最多 10 张参考图；模型须支持 Base64 图片返回。' : 'Agnes 使用 1K 尺寸，并区分文生图与参考图请求。'}</p>}
+        {module === 'llm' && <p className="mt-3 text-xs text-muted-foreground">使用 OpenAI 格式的对话接口与流式输出。模型名称可填写服务商提供的模型标识。</p>}
+        {module === 'image' && <p className="mt-3 text-xs text-muted-foreground">按所选厂商提交图片请求，比例跟随图文草案。
+          {input.imageProtocol === 'sub2api' ? 'Sub2API 使用同一 API Key 提交和查询任务，最长等待 30 分钟；完成后下载并保存图片，实际尺寸和质量以服务端结果为准。' : input.imageProtocol === 'glm' ? 'GLM-Image 使用像素尺寸生成图片，图片会下载并保存到本机。' : input.imageProtocol === 'seedream' ? 'Seedream 使用 2K 尺寸，单次最多 10 张参考图；模型须支持 Base64 图片返回。' : 'Agnes 使用 1K 尺寸，支持原帖风格、按页素材和沿用当前图优化。'}</p>}
         {module === 'extraction' && input.videoParserProvider === 'linkdigest' && <label className="mt-3 block space-y-1.5">单次提取积分上限
           <input name="linkDigestMaxCredits" type="number" min={1} max={1000} step={1} className="field" value={input.linkDigestMaxCredits ?? 5}
             onChange={event => update({ linkDigestMaxCredits: Number(event.target.value) })} /></label>}

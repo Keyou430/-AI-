@@ -5,38 +5,68 @@ import {
   StoryboardShot,
 } from '../types';
 
+const scriptNumberPattern = '[0-9零〇一二两三四五六七八九十百千]+';
+
+function parseScriptNumber(value: string): number {
+  if (/^\d+$/.test(value)) return Number(value);
+  const digits: Record<string, number> = {
+    零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9,
+  };
+  const units: Record<string, number> = { 十: 10, 百: 100, 千: 1000 };
+  let total = 0;
+  let current = 0;
+  for (const char of value) {
+    if (units[char]) {
+      total += (current || 1) * units[char];
+      current = 0;
+    } else {
+      current = current * 10 + (digits[char] ?? Number(char));
+    }
+  }
+  return total + current;
+}
+
+function parseTimeRange(timeRange: string): [number, number] | null {
+  const match = timeRange.match(new RegExp(
+    '(' + scriptNumberPattern + ')\\s*秒?\\s*[-~～—–至到]\\s*(' + scriptNumberPattern + ')\\s*秒?'
+  ));
+  return match ? [parseScriptNumber(match[1]), parseScriptNumber(match[2])] : null;
+}
+
+function parseShotFields(body: string): Record<string, string> {
+  const headings = [...body.matchAll(/(?:^|\n|[▪•])[\t \uFE0E\uFE0F]*(?:[-*][\t ]*)?(人员动作分工|运镜与拍摄执行标准|声音内容)[\t ]*[：:][\t ]*/g)];
+  return Object.fromEntries(headings.map((heading, index) => [
+    heading[1],
+    body.slice(heading.index! + heading[0].length, headings[index + 1]?.index ?? body.length).trim(),
+  ]));
+}
+
 export function parseGeneratedScript(rawText: string): ParsedScriptStructure {
   const cleaned = (rawText || '').trim();
 
   const overviewMatch = cleaned.match(
-    /【分镜脚本总览】\s*共\s*(\d+)\s*个镜头[，,]\s*总时长\s*(\d+)\s*秒/
+    new RegExp('【分镜脚本总览】\\s*共\\s*(' + scriptNumberPattern + ')\\s*个镜头[，,]\\s*总时长\\s*(' + scriptNumberPattern + ')\\s*秒')
   );
-  const declaredTotalShots = overviewMatch ? Number(overviewMatch[1]) : 0;
-  const declaredTotalDuration = overviewMatch ? Number(overviewMatch[2]) : 0;
+  const declaredTotalShots = overviewMatch ? parseScriptNumber(overviewMatch[1]) : 0;
+  const declaredTotalDuration = overviewMatch ? parseScriptNumber(overviewMatch[2]) : 0;
 
   const shotRegex =
-    /【镜头\s*(\d+)\s*[|｜]\s*([^】]+)】([\s\S]*?)(?=【镜头\s*\d+|$)/g;
+    new RegExp('【镜头\\s*(' + scriptNumberPattern + ')\\s*[|｜]\\s*([^】]+)】([\\s\\S]*?)(?=【镜头\\s*' + scriptNumberPattern + '\\s*[|｜]|$)', 'g');
 
   const shots: StoryboardShot[] = [];
   let match: RegExpExecArray | null;
 
   while ((match = shotRegex.exec(cleaned)) !== null) {
-    const shotNumber = Number(match[1]);
+    const shotNumber = parseScriptNumber(match[1]);
     const timeRange = match[2].trim();
     const body = match[3].replace(/——————/g, '').trim();
 
-    const timeNums = timeRange.match(/(\d+)\s*[-~至]\s*(\d+)/);
-    const durationSec = timeNums
-      ? Math.max(0, Number(timeNums[2]) - Number(timeNums[1]))
-      : 0;
-
-    const actionMatch = body.match(/▪️\s*人员动作分工[：:]([^▪️\n]+)/);
-    const cameraMatch = body.match(/▪️\s*运镜与拍摄执行标准[：:]([^▪️\n]+)/);
-    const audioMatch = body.match(/▪️\s*声音内容[：:]([^▪️\n]+)/);
-
-    const actionDivision = actionMatch ? actionMatch[1].trim() : '';
-    const cameraExecution = cameraMatch ? cameraMatch[1].trim() : '';
-    const audioContent = audioMatch ? audioMatch[1].trim() : '';
+    const timeNums = parseTimeRange(timeRange);
+    const durationSec = timeNums ? Math.max(0, timeNums[1] - timeNums[0]) : 0;
+    const fields = parseShotFields(body);
+    const actionDivision = fields['人员动作分工'] || '';
+    const cameraExecution = fields['运镜与拍摄执行标准'] || '';
+    const audioContent = fields['声音内容'] || '';
     const isAmbientOnly = audioContent.startsWith('仅环境音');
 
     shots.push({
@@ -78,7 +108,9 @@ export function parseGeneratedScript(rawText: string): ParsedScriptStructure {
   const voiceoverFullText =
     spokenLines.length > 0
       ? spokenLines.join('\n\n')
-      : '（当前分镜脚本均为环境音镜头，未包含人声口播）';
+      : shots.length > 0 && shots.every(shot => shot.isAmbientOnly)
+        ? '（当前分镜脚本均为环境音镜头，未包含人声口播）'
+        : '（未解析到口播，请查看全文核对）';
 
   return {
     rawText: cleaned,
@@ -132,15 +164,10 @@ export function runScriptComplianceChecks(
 
   const noSubtitleWord = !raw.includes('字幕');
 
-  const lastShotEndMatch =
-    parsed.shots.length > 0
-      ? parsed.shots[parsed.shots.length - 1].timeRange.match(
-          /(\d+)\s*[-~至]\s*(\d+)/
-        )
-      : null;
-  const lastShotEndSec = lastShotEndMatch
-    ? Number(lastShotEndMatch[2])
-    : parsed.totalDurationSec;
+  const lastShotTime = parsed.shots.length > 0
+    ? parseTimeRange(parsed.shots[parsed.shots.length - 1].timeRange)
+    : null;
+  const lastShotEndSec = lastShotTime ? lastShotTime[1] : parsed.totalDurationSec;
   const durationMatched =
     parsed.totalDurationSec === expectedDurationSec &&
     lastShotEndSec === expectedDurationSec;

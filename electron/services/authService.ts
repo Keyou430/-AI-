@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID, scrypt, timingSafeEqual } from 'node:crypto';
-import { AuthError } from './authError';
+import { AccountDisabledError, AuthError, type AuthLifecycle } from './authError';
 export { AuthError } from './authError';
 import type { DBUser, LocalSQLiteManager } from '../db/sqliteService';
 
@@ -9,6 +9,7 @@ export interface AuthUser {
   displayName: string;
   role: 'admin' | 'member';
   isActive: boolean;
+  apiResetVersion?: number;
   createdAt: string;
   lastLoginAt: string | null;
 }
@@ -17,7 +18,7 @@ export interface AuthUser {
 function publicUser(user: DBUser): AuthUser {
   return { id: user.id, username: user.username, displayName: user.display_name,
     role: user.role, isActive: user.is_active === 1, createdAt: user.created_at,
-    lastLoginAt: user.last_login_at };
+    lastLoginAt: user.last_login_at, apiResetVersion: user.api_reset_version ?? 0 };
 }
 
 let activeHashes = 0;
@@ -41,13 +42,16 @@ export class AuthService {
   private readonly sessions = new Map<number, string>();
   private readonly loginAttempts = new Map<number, object>();
   private readonly userRevisions = new Map<string, number>();
-  constructor(private readonly db: LocalSQLiteManager) {}
+  constructor(private readonly db: LocalSQLiteManager, private readonly lifecycle?: AuthLifecycle) {}
 
   async status(senderId: number) {
     await this.db.ensureInitialized();
     const userId = this.sessions.get(senderId);
     const user = userId ? this.db.findUser('id', userId) : undefined;
-    if (user && user.is_active !== 1) this.logout(senderId);
+    if (user && user.is_active !== 1) {
+      try { this.lifecycle?.disabled(publicUser(user), 'local'); }
+      finally { this.logout(senderId); }
+    }
     return { needsSetup: this.db.listUsers().length === 0,
       user: user?.is_active === 1 ? publicUser(user) : null };
   }
@@ -82,7 +86,11 @@ export class AuthService {
       const current = this.db.findUser('id', user.id);
       if (this.loginAttempts.get(senderId) !== attempt || !current || current.password_hash !== user.password_hash ||
           this.userRevisions.get(user.id) !== revision) throw new AuthError('AUTH_REQUIRED', '登录已失效，请重新登录');
-      if (current.is_active !== 1) throw new AuthError('ACCOUNT_DISABLED', '当前账号已被管理员停用');
+      if (current.is_active !== 1) {
+        this.lifecycle?.disabled(publicUser(current), 'local');
+        throw new AccountDisabledError(publicUser(current));
+      }
+      this.lifecycle?.signedIn(publicUser(current), 'local');
       current.last_login_at = new Date().toISOString();
       this.db.saveUser(current);
       this.sessions.set(senderId, current.id);
@@ -97,9 +105,10 @@ export class AuthService {
     const userId = this.sessions.get(senderId);
     const user = userId ? this.db.findUser('id', userId) : undefined;
     if (!user || user.is_active !== 1) {
-      this.logout(senderId);
-      throw new AuthError(user ? 'ACCOUNT_DISABLED' : 'AUTH_REQUIRED',
-        user ? '当前账号已被管理员停用，请重新登录' : '请先登录');
+      try { if (user) this.lifecycle?.disabled(publicUser(user), 'local'); }
+      finally { this.logout(senderId); }
+      if (user) throw new AccountDisabledError(publicUser(user));
+      throw new AuthError('AUTH_REQUIRED', '请先登录');
     }
     if (adminOnly && user.role !== 'admin') throw new AuthError('FORBIDDEN', '仅管理员可执行此操作');
     return publicUser(user);
@@ -141,11 +150,18 @@ export class AuthService {
     if (!active && (user.username === 'admin' || user.id === actor.id)) {
       throw new AuthError('PROTECTED_ACCOUNT', '不能停用内置管理员或当前账号');
     }
+    if (!active && user.is_active === 1 && user.role === 'member') {
+      user.api_reset_version = (user.api_reset_version ?? 0) + 1;
+    }
     user.is_active = active ? 1 : 0;
     this.db.saveUser(user);
     if (!active) {
       this.userRevisions.set(userId, (this.userRevisions.get(userId) || 0) + 1);
-      for (const [sessionId, id] of this.sessions) if (id === userId) this.logout(sessionId);
+      try {
+        if ([...this.sessions.values()].includes(userId)) this.lifecycle?.disabled(publicUser(user), 'local');
+      } finally {
+        for (const [sessionId, id] of this.sessions) if (id === userId) this.logout(sessionId);
+      }
     }
   }
 

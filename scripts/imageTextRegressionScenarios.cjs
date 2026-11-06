@@ -3,10 +3,10 @@ const path = require('node:path');
 const assert = require('node:assert/strict');
 const {dialog} = require('electron');
 
-module.exports = async function verifyImageTextFixes({window,call,waitFor,clickText,setLabel,imageHistory,baseline,dataDirectory,referenceFile,applicationPath,providerClass,databaseClass,baseURL,imageCalls,evidenceDirectory=path.join(applicationPath,'docs','图文流程排查证据','2026-10-30-回归')}) {
+module.exports = async function verifyImageTextFixes({window,call,waitFor,clickText,setLabel,imageHistory,baseline,dataDirectory,referenceFile,applicationPath,providerClass,databaseClass,baseURL,imageCalls,evidenceDirectory=path.join(applicationPath,'docs','图文流程排查证据','2026-11-02-删除跳转-回归')}) {
   fs.mkdirSync(evidenceDirectory,{recursive:true});
   const results=[];
-  const record=(id,details)=>{results.push({id,status:'PASS',details});fs.writeFileSync(path.join(evidenceDirectory,'regression.json'),JSON.stringify({date:'2026-10-30',version:require(path.join(applicationPath,'package.json')).version,packaged:applicationPath.endsWith('.asar'),supplier:'isolated fixtures',cases:results},null,2),'utf8');console.log('缺陷回归 '+id+' PASS '+JSON.stringify(details));};
+  const record=(id,details)=>{results.push({id,status:'PASS',details});fs.writeFileSync(path.join(evidenceDirectory,'regression.json'),JSON.stringify({date:'2026-11-02',version:require(path.join(applicationPath,'package.json')).version,packaged:applicationPath.endsWith('.asar'),supplier:'isolated fixtures',cases:results},null,2),'utf8');console.log('缺陷回归 '+id+' PASS '+JSON.stringify(details));};
   const nav=label=>window.webContents.executeJavaScript('Array.from(document.querySelectorAll("nav button")).find(el=>el.getAttribute("aria-label")==='+JSON.stringify(label)+').click()');
   const openDraft=async(seed,title)=>{
     seed=structuredClone(seed);seed.title=title;

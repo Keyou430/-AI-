@@ -1,0 +1,133 @@
+{
+  "verifiedAt": "2026-11-04T01:24:14.665Z",
+  "scope": "source changes; existing 1.0.21 installer not rebuilt or installed",
+  "policy": {
+    "taskCheckIntervalMs": 15000,
+    "idleCheckIntervalMs": 30000,
+    "graceSinceLastSuccessfulAuthorizationMs": 60000,
+    "perRequestTimeoutMs": 5000,
+    "identityRetryDelayMs": 250,
+    "identityRetries": 1,
+    "shareInFlightIdentityChecks": true,
+    "freshAuthorizationBeforeBusinessSubmission": true,
+    "explicitRevocationCancelsImmediately": true,
+    "cancelWorksDuringAuthWait": true,
+    "completedImagePreservedWithinGrace": true
+  },
+  "checks": [
+    {
+      "command": "new fault tests before implementation",
+      "exitCode": 1,
+      "total": 49,
+      "passed": 38,
+      "failed": 11,
+      "log": "before-fix.log"
+    },
+    {
+      "command": "node --import tsx --test --test-concurrency=2 --test-timeout=30000 tests/*.test.ts",
+      "exitCode": 0,
+      "total": 207,
+      "passed": 207,
+      "failed": 0,
+      "log": "all-tests-final.log"
+    },
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0,
+      "log": "typecheck-verified.log"
+    },
+    {
+      "command": "npm run build",
+      "exitCode": 0,
+      "log": "build-final.log"
+    },
+    {
+      "command": "isolated remote Electron regression wrapper",
+      "exitCode": 0,
+      "authorizationCases": 4,
+      "layoutCases": 41,
+      "regressionCases": 8,
+      "log": "desktop-regression-final.log"
+    },
+    {
+      "command": "npm run smoke:persistence",
+      "exitCode": 0,
+      "phases": [
+        "seed",
+        "edit",
+        "verify",
+        "linkdigest",
+        "review",
+        "fresh"
+      ],
+      "log": "persistence.log"
+    },
+    {
+      "command": "git diff --check",
+      "exitCode": 0
+    }
+  ],
+  "intermediateFailures": [
+    {
+      "log": "typecheck.log",
+      "reason": "TypeScript union narrowing and log-field whitelist corrected before final verification"
+    },
+    {
+      "log": "targeted-tests.log",
+      "reason": "legacy continuous-failure tests required bounded grace input under new waiting semantics; corrected; session teardown now cancels and drains pending identity checks"
+    },
+    {
+      "log": "desktop-first-attempt/desktop-regression.log",
+      "reason": "existing narrow-window size wait failed before new authorization cases; later run passed; no product layout change"
+    },
+    {
+      "log": "desktop-second-attempt/desktop-regression-diagnostic.log",
+      "reason": "four authorization cases and F01-F05 passed; generic role=dialog disappearance wait failed; final temporary wrapper targets actual .dialog-popup and reuses content-size helper, all business assertions retained"
+    }
+  ],
+  "testIsolation": {
+    "productionDataAccessed": false,
+    "commercialCalls": 0,
+    "serverConfigurationChanged": false,
+    "acceleratedDesktopPolicy": {
+      "taskCheckIntervalMs": 50,
+      "graceMs": 1600
+    },
+    "defaultIntervalsVerifiedByUnitTests": true
+  },
+  "protectedFiles": [
+    {
+      "file": "docs/工作交接.md",
+      "unchanged": true
+    },
+    {
+      "file": "docs/企业交付平台部署操作手册.md",
+      "unchanged": true
+    },
+    {
+      "file": "docs/企业交付平台部署操作手册.docx",
+      "unchanged": true
+    }
+  ],
+  "existingInstaller": {
+    "version": "1.0.21",
+    "sha256": "fd3390d87f2dafbb7282417969d152ad1d96fcaf9d6f798624d0d1af823a0c55",
+    "unchanged": true
+  },
+  "sourceFilesAfter": {
+    "electron/services/remoteAuthService.ts": "a630bc88883c0cd45b5e1869c63a0fb1f34ce654302091301ee303a7e7f2ffa8",
+    "electron/main.ts": "4de6128dbb53c0068ef18960b48d27f5f7e23aa680273e0ddd660811335cef8f",
+    "electron/services/imageTextIpc.ts": "5c597c7e89df36773d19143d8334388e4882e5e3538653f5aba02400175a91ed",
+    "src/store/useImageTextStore.ts": "99d9e75a3b01bce61750c5228dfca55c2658b76008a183cc2732b19da7bb82d5",
+    "tests/remoteAuthNetwork.test.ts": "babd669dd5ae7b492479b827731c02abbd8f3dca6120a4ac9e2802da7cafd5a6",
+    "tests/imageTextWorkflow.test.ts": "c7fc015069772cb1f49073af5d3e36b769333a2c8173c8ece70659291048a496",
+    "REGRESSION.md": "ae3d91d0e12ac4e0b0b07d5334a1cb267e504181b5f170261f56b0aaa3b8d0e8",
+    "README.md": "4fd7a732cf93a3aaa97fead56505d9391ed22b023461b6ca70b85051e0e5ba02"
+  },
+  "limitations": [
+    "真实连续超时的网络根因尚未确认；本次实现有界恢复策略。",
+    "现有安装包未更新，未执行生产服务器变更、自动安装或提交推送。",
+    "生产构建保留已有超过 500 kB 的分包提示。"
+  ],
+  "finalDiffCheckExitCode": 0
+}

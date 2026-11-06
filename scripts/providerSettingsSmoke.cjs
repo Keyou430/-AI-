@@ -14,21 +14,45 @@ let testAuthServer;
 let authOrigin;
 let fixtureAuthOrigin;
 const dataDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'remix-provider-settings-'));
-const evidenceDirectory = remotePackage ? path.join(sourceRoot, 'release', 'provider-settings-' + metadata.version)
-  : path.join(sourceRoot, 'docs', '图文流程排查证据', '2026-10-30-设置与历史优化');
+const evidenceDirectory = process.env.PROVIDER_SETTINGS_EVIDENCE_DIR || (remotePackage ? path.join(sourceRoot, 'release', 'provider-settings-' + metadata.version)
+  : path.join(sourceRoot, 'docs', '图文流程排查证据', '2026-11-02-三厂商设置'));
 app.setPath('userData', dataDirectory);
 const png = nativeImage.createFromBitmap(Buffer.alloc(32 * 32 * 4, 255), { width: 32, height: 32 }).toPNG().toString('base64');
 const requests = [];
 let imageStatus = 200;
+const sub2apiTasks = new Map();
 const originalFetch = globalThis.fetch;
 globalThis.fetch = async (input, init) => {
   const url = input instanceof Request ? input.url : String(input);
   const address = new URL(url);
   if (remotePackage && address.origin === authOrigin) return originalFetch(fixtureAuthOrigin + address.pathname + address.search, init);
-  const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+  const multipart = init?.body instanceof FormData ? init.body : undefined;
+  const body = multipart ? Object.fromEntries(multipart) : init?.body ? JSON.parse(String(init.body)) : undefined;
   const headers = new Headers(init?.headers);
   const request = { url, body, key: headers.get('Authorization') };
   requests.push(request);
+  if (url === 'https://www.sevnx.lol/v1/images/generations' || url === 'https://www.sevnx.lol/v1/images/edits') {
+    assert.equal(request.key, 'Bearer FIXTURE_SUB2API_SECRET');
+    assert.equal(String(body.async), 'true'); assert.equal(body.model, 'gpt-image-2');
+    assert.equal(body.stream, undefined); assert.equal(body.size, '1024x1024');
+    if (url.endsWith('/edits')) {
+      assert.ok(multipart); assert.equal(multipart.getAll('image[]').length, 1);
+      assert.equal(headers.has('Content-Type'), false);
+      assert.deepEqual(Buffer.from(await multipart.getAll('image[]')[0].arrayBuffer()), Buffer.from(png, 'base64'));
+    } else assert.equal(headers.get('Content-Type'), 'application/json');
+    const id = 'imgtask_sub2api_' + (sub2apiTasks.size + 1); sub2apiTasks.set(id, 0);
+    return Response.json({ id, task_id: id, status: 'processing', poll_url: '/v1/images/tasks/' + id }, { status: 202, headers: { 'Retry-After': '0' } });
+  }
+  if (address.origin === 'https://www.sevnx.lol' && address.pathname.startsWith('/v1/images/tasks/')) {
+    assert.equal(request.key, 'Bearer FIXTURE_SUB2API_SECRET'); assert.equal(init?.method, 'GET');
+    const id = address.pathname.split('/').pop(); assert.ok(sub2apiTasks.has(id));
+    const count = sub2apiTasks.get(id) + 1; sub2apiTasks.set(id, count);
+    return Response.json(count === 1 ? { id, status: 'processing' } : { id, status: 'completed', result: { data: [{ url: 'https://sub2api-assets.example/generated.png' }] } }, { headers: { 'Retry-After': '0' } });
+  }
+  if (url === 'https://sub2api-assets.example/generated.png') {
+    assert.equal(request.key, null); assert.equal(init?.redirect, 'error');
+    return new Response(Buffer.from(png, 'base64'));
+  }
   if (url === 'https://api.deepseek.com/chat/completions') {
     return Response.json({ id: 'fixture', object: 'chat.completion', created: 0, model: body.model,
       choices: [{ index: 0, message: { role: 'assistant', content: '连接成功' }, finish_reason: 'stop' }] });
@@ -36,6 +60,17 @@ globalThis.fetch = async (input, init) => {
   if (url === 'https://linkdigest.dev/api/v1/digest') {
     return Response.json({ platform: 'xiaohongshu', title: '提取测试', caption: '原帖文字', transcript: [],
       images: [{ ocr: '图片文字', description: '自然光场景' }], coverage: { images_read: 1, images_total: 1 } });
+  }
+  if (url === 'https://open.bigmodel.cn/api/paas/v4/images/generations') {
+    assert.equal(request.key, 'Bearer FIXTURE_GLM_SECRET');
+    assert.deepEqual(Object.keys(body).sort(), ['model', 'prompt', 'size', 'watermark_enabled']);
+    assert.equal(body.watermark_enabled, false);
+    assert.equal(body.model, 'glm-image'); assert.equal(body.size, '1280x1280');
+    return Response.json({ data: [{ url: 'https://glm-images.example/generated.png?signature=fixture' }] });
+  }
+  if (url === 'https://glm-images.example/generated.png?signature=fixture') {
+    assert.equal(request.key, null); assert.equal(init?.method, 'GET'); assert.equal(init?.redirect, 'error');
+    return new Response(Buffer.from(png, 'base64'));
   }
   if (url === 'https://ark.cn-beijing.volces.com/api/v3/images/generations' || url === 'https://proxy.example/images') {
     return imageStatus === 200 ? Response.json({ data: [{ b64_json: png }] }) : Response.json({ error: 'PRIVATE_PROVIDER_MESSAGE' }, { status: imageStatus });
@@ -49,7 +84,10 @@ app.on('browser-window-created', (_event, window) => {
   window.show = () => {};
   window.webContents.setBackgroundThrottling(false);
   window.webContents.once('did-finish-load', async () => {
-    const js = expression => window.webContents.executeJavaScript(expression);
+    const js = async expression => {
+      try { return await window.webContents.executeJavaScript(expression); }
+      catch (error) { throw new Error("界面脚本执行失败：" + expression, { cause: error }); }
+    };
     const call = (method, payload) => js('window.electronAPI[' + JSON.stringify(method) + '](' + (payload === undefined ? '' : JSON.stringify(payload)) + ')');
     const waitFor = async expression => {
       const deadline = Date.now() + 15000;
@@ -81,6 +119,13 @@ app.on('browser-window-created', (_event, window) => {
       const config = await js('Object.fromEntries(' + JSON.stringify(fields) + '.map(name=>[name,' + form(module) + '.querySelector("[name="+name+"]").value]))');
       return call('testProviderModule', { module, config, ...(module === 'extraction' ? { rawInput: 'https://www.xiaohongshu.com/explore/fixture?xsec_token=fixture' } : {}) });
     };
+    const navigate = label => js('document.querySelector("nav button[aria-label=' + label + ']").click()');
+    const clickPage = text => js('Array.from(document.querySelectorAll("button")).find(el=>el.textContent.trim()===' + JSON.stringify(text) + ').click()');
+    const clickDialog = text => js('Array.from(document.querySelector(".dialog-popup[role=dialog]").querySelectorAll("button")).find(el=>el.textContent.trim()===' + JSON.stringify(text) + ').click()');
+    const openSettings = async () => {
+      await navigate('设置');
+      await js('Array.from(document.querySelectorAll("[role=tab]")).find(el=>el.textContent.trim()==="系统设置").click()');
+    };
     try {
       assert.equal((await call('resetProviderSettings')).errorCode, 'AUTH_REQUIRED');
       await waitFor(remotePackage ? 'Boolean(document.querySelector("[name=username]"))' : 'Boolean(document.querySelector("[name=displayName]"))');
@@ -92,6 +137,10 @@ app.on('browser-window-created', (_event, window) => {
       await waitFor('document.querySelectorAll("form[data-provider-module]").length===3');
       await waitFor('document.querySelector("[role=tab][aria-selected=true]").textContent.trim()==="系统设置"');
       cases.push('三模块独立卡片和操作按钮');
+      assert.equal(await js('document.body.innerText.includes("兼容")'), false);
+      assert.deepEqual(await js('Array.from(' + field('image', 'imageProtocol') + '.options).map(el=>el.textContent)'), ['Agnes', 'Seedream', 'GLM', 'Sub2API（异步生图）']);
+      assert.equal(await js('Array.from(' + form('image') + '.querySelectorAll("button")).some(el=>el.textContent.includes("自定义"))'), false);
+      cases.push('系统设置有 Agnes、Seedream、GLM、Sub2API 四个厂商入口');
       assert.equal(await js('Array.from(document.querySelectorAll("button")).some(el=>["测试内容提取","测试生成图片"].includes(el.textContent.trim()))'), false);
       assert.equal(await js('Boolean(document.querySelector("[name=providerTestLink]"))'), false);
       assert.equal(await js('Array.from(document.querySelectorAll("button")).filter(el=>el.textContent.trim()==="测试模型连接").length'), 1);
@@ -102,6 +151,19 @@ app.on('browser-window-created', (_event, window) => {
       assert.deepEqual(await call('getProviderSettings'), before);
       assert.equal(await js(field('image', 'imageProtocol') + '.value'), 'seedream');
       cases.push('预设只填表，不保存、不发请求');
+      await click('image', '使用 GLM 配置');
+      assert.equal(await js(field('image', 'imageEndpoint') + '.value'), 'https://open.bigmodel.cn/api/paas/v4/images/generations');
+      assert.equal(await js(field('image', 'imageModel') + '.value'), 'glm-image');
+      assert.equal(await js('Boolean(document.querySelector("[data-testid=glm-image-limits]"))'), true);
+      await setField('image', 'imageApiKey', 'UNSAVED_GLM_SECRET');
+      await js('{const el=' + field('image', 'imageProtocol') + ';el.value="agnes";el.dispatchEvent(new Event("change",{bubbles:true}));}');
+      await waitFor(field('image', 'imageEndpoint') + '.value==="https://apihub.agnes-ai.com/v1/images/generations"');
+      assert.equal(await js(field('image', 'imageModel') + '.value'), 'agnes-image-2.5-flash');
+      assert.equal(await js(field('image', 'imageApiKey') + '.value'), '');
+      assert.equal(await js('Boolean(document.querySelector("[data-testid=glm-image-limits]"))'), false);
+      await click('image', '使用 Seedream 配置');
+      assert.deepEqual(await call('getProviderSettings'), before); assert.equal(requests.length, 0);
+      cases.push('三家预设和厂商下拉均联动地址、模型及密钥，GLM 限制清晰提示且切换不保存或请求');
 
       await click('llm', '使用 DeepSeek 配置');
       await setField('llm', 'llmApiKey', 'FIXTURE_TEXT_SECRET');
@@ -193,6 +255,19 @@ app.on('browser-window-created', (_event, window) => {
       assert.equal(result.data.draft.pages[0].assetId, undefined); assert.equal(result.data.draft.pages[1].assetId, result.data.assetId);
       assert.equal((await call('listImageTextHistory')).data.length, 1);
       cases.push('已保存 Seedream 配置进入实际逐页生成 IPC，只更新指定页并保存历史');
+      await navigate('历史记录');
+      await waitFor('document.querySelector("[data-record-id=provider-fixture]")?.getAttribute("aria-pressed")==="true"');
+      await clickPage('重新编辑');
+      await waitFor('Boolean(document.querySelector("[aria-label=图文结果]"))');
+      await js('{const el=document.querySelector("select[aria-label=选择图片]");el.value="page-two";el.dispatchEvent(new Event("change",{bubbles:true}));}');
+      await waitFor('Boolean(document.querySelector("[aria-label=图文结果] img"))');
+      await clickPage('图片优化'); await waitFor('Boolean(document.querySelector(".dialog-popup[role=dialog]"))');
+      await js('{const el=Array.from(document.querySelectorAll(".dialog-popup[role=dialog] label")).find(el=>el.textContent.startsWith("本图文字")).querySelector("textarea");Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value").set.call(el,"Seedream 仅修改本图文字");el.dispatchEvent(new Event("input",{bubbles:true}));}');
+      await waitFor('document.querySelector(".dialog-popup[role=dialog] input[type=checkbox]").checked && !document.querySelector(".dialog-popup[role=dialog] input[type=checkbox]").disabled');
+      assert.equal(await js('Array.from(document.querySelectorAll(".dialog-popup[role=dialog] button")).find(el=>el.textContent.includes("为本图补传")).disabled'), false);
+      await clickDialog('取消'); await openSettings();
+      await waitFor('document.querySelectorAll("form[data-provider-module]").length===3');
+      cases.push('Seedream 仅改文字仍默认附带旧图，参考选项与上传保持可用');
 
       await click('extraction', '自定义接口');
       await setField('extraction', 'videoParserEndpoint', 'https://public.example/read');
@@ -225,15 +300,14 @@ app.on('browser-window-created', (_event, window) => {
       cases.push('操作日志不记录密钥或上游正文');
 
       // 实际页面验证：最新记录可为视频或图文，重新进入不沿用旧选择与筛选。
-      const navigate = label => js('document.querySelector("nav button[aria-label=' + label + ']").click()');
-      const clickPage = text => js('Array.from(document.querySelectorAll("button")).find(el=>el.textContent.trim()===' + JSON.stringify(text) + ').click()');
-      const clickDialog = text => js('Array.from(document.querySelector("[role=dialog]").querySelectorAll("button")).find(el=>el.textContent.trim()===' + JSON.stringify(text) + ').click()');
       const newestVideo = { id: 'latest-video-fixture', title: '最新视频验收', createdAt: '2026-10-30T08:00:00.000Z', platform: 'douyin',
         sourceUrl: 'https://v.douyin.com/fixture', durationSec: 18, userCameraWork: '', originalTranscript: '视频原稿', visualSummary: '',
         rawGeneratedScript: '最新视频内容', parsedStructure: {}, refinementHistory: [], conversationMessages: [] };
       assert.equal((await call('saveHistoryToDB', newestVideo)).success, true);
       await navigate('历史记录');
       await waitFor('document.querySelector("[data-record-id=latest-video-fixture]")?.getAttribute("aria-pressed")==="true" && document.querySelector("[aria-label=历史详情] h2")?.textContent==="最新视频验收"');
+      // 最新项可先由回退选择显示，等两类历史加载完成后再切换记录。
+      await waitFor('!Array.from(document.querySelectorAll("button")).find(el=>el.textContent.trim()==="刷新").disabled');
       await js('document.querySelector("[data-record-id=provider-fixture]").click()');
       await waitFor('document.querySelector("[data-record-id=provider-fixture]").getAttribute("aria-pressed")==="true"');
       await navigate('设置'); await navigate('历史记录');
@@ -286,10 +360,6 @@ app.on('browser-window-created', (_event, window) => {
       cases.push('图文右半区与历史统一左图右文；520至760像素容器也左右展示，图片固定文字独立滚动');
       fs.writeFileSync(path.join(evidenceDirectory, 'layout.json'), JSON.stringify({ columns, scrolling }, null, 2), 'utf8');
 
-      const openSettings = async () => {
-        await navigate('设置');
-        await js('Array.from(document.querySelectorAll("[role=tab]")).find(el=>el.textContent.trim()==="系统设置").click()');
-      };
       await openSettings();
       await waitFor('document.querySelectorAll("form[data-provider-module]").length===3');
       const beforeCancel = fs.readFileSync(path.join(dataDirectory, 'providers.encrypted'));
@@ -333,14 +403,160 @@ app.on('browser-window-created', (_event, window) => {
       assert.equal(requests.length, 6);
       cases.push('清空与页面切换不触发内容提取或图片请求');
 
-      fs.writeFileSync(path.join(evidenceDirectory, 'acceptance.json'), JSON.stringify({ date: '2026-10-30', version: metadata.version, packaged: remotePackage, supplier: 'isolated fixtures', requests: requests.length, cases }, null, 2), 'utf8');
+      await click('image', '使用 GLM 配置');
+      await setField('image', 'imageApiKey', 'FIXTURE_GLM_SECRET'); await save('image');
+      const glmStored = new LocalProviderService(dataDirectory, safeStorage).read();
+      assert.equal(glmStored.imageProtocol, 'glm'); assert.equal(glmStored.imageModel, 'glm-image');
+      assert.equal(glmStored.imageApiKey, 'FIXTURE_GLM_SECRET');
+      assert.equal(glmStored.llmApiKey, 'FIXTURE_RECONFIGURED_SECRET');
+      await navigate('二创工作台'); await openSettings();
+      await waitFor('document.querySelectorAll("form[data-provider-module]").length===3');
+      assert.equal(await js(field('image', 'imageProtocol') + '.value'), 'glm');
+      assert.equal(await js(field('image', 'imageModel') + '.value'), 'glm-image');
+      assert.equal(await js(field('image', 'imageApiKey') + '.value'), '');
+      await js(form('image') + '.scrollIntoView({block:"start"})');
+      await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+      fs.writeFileSync(path.join(evidenceDirectory, 'glm-settings.png'), (await window.webContents.capturePage()).toPNG());
+      assert.equal(await js('document.querySelectorAll("[name=glmService],[data-testid=glm-reference-service]").length'), 0);
+      cases.push('GLM 仅保留文字生图配置，配置加密保存并重读，其他模块密钥保留且表单不回显密钥');
+
+      const glmDraft = { ...structuredClone(draft), id: 'glm-provider-fixture', createdAt: '2026-11-02T12:00:00.000Z', title: 'GLM 图文验收' };
+      const glmResult = await call('generateImageText', { draft: glmDraft, pageId: 'page-two', taskId: randomUUID() });
+      assert.equal(glmResult.success, true, glmResult.error); assert.ok(glmResult.data.assetId);
+      assert.equal(requests.length, 8);
+      assert.equal(glmResult.data.draft.pages[0].assetId, undefined);
+      assert.equal(glmResult.data.draft.pages[1].assetId, glmResult.data.assetId);
+      assert.equal((await call('readImageTextAsset', glmResult.data.assetId)).success, true);
+      cases.push('GLM 实际生成 IPC 下载 URL 图片并落盘，单页写入历史且不改变其他页');
+
+      const legacyGLMDraft = structuredClone(glmResult.data.draft);
+      legacyGLMDraft.references.push({ id: glmResult.data.assetId, name: 'legacy-glm-scene.png', kind: 'scene', width: 32, height: 32 });
+      legacyGLMDraft.pages[1].referenceIds = [glmResult.data.assetId];
+      assert.equal((await call('saveImageTextHistory', legacyGLMDraft)).success, true);
+      await navigate('历史记录');
+      await waitFor('document.querySelector("[data-record-id=glm-provider-fixture]")?.getAttribute("aria-pressed")==="true"');
+      await clickPage('重新编辑');
+      await waitFor('Boolean(document.querySelector("[aria-label=图文结果]"))');
+      await js('{const el=document.querySelector("select[aria-label=选择图片]");el.value="page-two";el.dispatchEvent(new Event("change",{bubbles:true}));}');
+      await waitFor('Boolean(document.querySelector("[aria-label=图文结果] img"))');
+      await clickPage('图片优化'); await waitFor('Boolean(document.querySelector(".dialog-popup[role=dialog]"))');
+      await js('{const el=Array.from(document.querySelectorAll(".dialog-popup[role=dialog] label")).find(el=>el.textContent.startsWith("本图文字")).querySelector("textarea");Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value").set.call(el,"GLM 仅修改本图文字");el.dispatchEvent(new Event("input",{bubbles:true}));}');
+      await waitFor('!document.querySelector(".dialog-popup[role=dialog] input[type=checkbox]").checked && document.querySelector(".dialog-popup[role=dialog] input[type=checkbox]").disabled');
+      assert.equal(await js('Array.from(document.querySelectorAll(".dialog-popup[role=dialog] button")).find(el=>el.textContent.includes("为本图补传")).disabled'), true);
+      await waitFor('Array.from(document.querySelectorAll(".dialog-popup[role=dialog] label")).some(el=>el.textContent.includes("legacy-glm-scene.png")&&el.querySelector("input[type=checkbox]")?.checked&&!el.querySelector("input[type=checkbox]")?.disabled)');
+      await js('Array.from(document.querySelectorAll(".dialog-popup[role=dialog] label")).find(el=>el.textContent.includes("legacy-glm-scene.png")).querySelector("input[type=checkbox]").click()');
+      await waitFor('Array.from(document.querySelectorAll(".dialog-popup[role=dialog] label")).some(el=>el.textContent.includes("legacy-glm-scene.png")&&!el.querySelector("input[type=checkbox]")?.checked&&el.querySelector("input[type=checkbox]")?.disabled)');
+      assert.equal((await call('readImageTextAsset', glmResult.data.assetId)).success, true);
+      assert.equal(requests.length, 8);
+      assert.ok(await js('document.querySelector(".dialog-popup[role=dialog]").textContent.includes("参考图上传和上一版图片参考已关闭")'));
+      await clickDialog('优化并重生成本图');
+      await waitFor('!document.querySelector(".dialog-popup[role=dialog]")');
+      await waitFor('window.electronAPI.listImageTextHistory().then(r=>r.data.find(d=>d.id==="glm-provider-fixture").versions.filter(v=>v.pageId==="page-two").length===2)');
+      const optimizedGLM = (await call('listImageTextHistory')).data.find(d=>d.id==='glm-provider-fixture');
+      assert.equal(requests.length, 10); assert.equal(optimizedGLM.pages[0].assetId, undefined);
+      assert.notEqual(optimizedGLM.pages[1].assetId, glmResult.data.assetId);
+      assert.equal((await call('readImageTextAsset', glmResult.data.assetId)).success, true);
+      assert.equal(optimizedGLM.references.length, 1); assert.deepEqual(optimizedGLM.pages[1].referenceIds, []);
+      cases.push('GLM 优化上传和上一版参考关闭，旧绑定可取消，文字生图保留素材、旧版本与其他页');
+      const unsupportedGLM = await call('generateImageText', { draft: optimizedGLM, pageId: 'page-two', taskId: randomUUID(), usePreviousImage: true });
+      assert.equal(unsupportedGLM.errorCode, 'IMAGE_PAGE_UNSUPPORTED'); assert.match(unsupportedGLM.error, /本页上一版图片/);
+      assert.equal(requests.length, 10);
+      const glmLogs = fs.readdirSync(path.join(dataDirectory, 'logs')).filter(file=>file.endsWith('.log')).map(file=>fs.readFileSync(path.join(dataDirectory, 'logs', file), 'utf8')).join('\n');
+      assert.equal(glmLogs.includes('FIXTURE_GLM_SECRET'), false); assert.equal(glmLogs.includes('signature=fixture'), false);
+      cases.push('GLM 不支持的上一版参考明确阻止且不发送请求，密钥和临时图片签名不写日志');
+      await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+      fs.writeFileSync(path.join(evidenceDirectory, 'glm-single-page.png'), (await window.webContents.capturePage()).toPNG());
+      const glmUploadDraft = { ...structuredClone(draft), id: 'glm-upload-fixture', createdAt: new Date().toISOString(), confirmed: false, references: optimizedGLM.references };
+      const savedGLMUpload = await call('saveImageTextHistory', glmUploadDraft);
+      assert.equal(savedGLMUpload.success, true, savedGLMUpload.error);
+      await navigate('历史记录');
+      await waitFor('document.querySelector("[data-record-id=glm-upload-fixture]")?.getAttribute("aria-pressed")==="true"');
+      await clickPage('重新编辑');
+      await waitFor('Array.from(document.querySelectorAll("[role=tab]")).some(el=>el.textContent.trim()==="素材 1")');
+      await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+      await js('{const el=Array.from(document.querySelectorAll("[role=tab]")).find(el=>el.textContent.trim()==="素材 1");el.focus();el.click();}');
+      await waitFor('Array.from(document.querySelectorAll("[role=tab]")).some(el=>el.textContent.trim()==="素材 1"&&el.getAttribute("aria-selected")==="true")');
+      for (const text of ['补传原帖参考图', '上传实际场景参考图（可选）']) {
+        await waitFor('Array.from(document.querySelectorAll("button")).some(el=>el.textContent.trim()===' + JSON.stringify(text) + '&&el.disabled&&el.getClientRects().length>0)');
+      }
+      assert.equal(await js('document.body.innerText.includes("参考图上传已关闭")'), true);
+      await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+      assert.equal(await js('Array.from(document.querySelectorAll("[role=tab]")).some(el=>el.textContent.trim()==="素材 1"&&el.getAttribute("aria-selected")==="true")'), true);
+      await js('Promise.allSettled(document.getAnimations().filter(animation=>animation.effect?.getComputedTiming().iterations!==Infinity).map(animation=>animation.finished))');
+      // 隐藏窗口先触发绘制，再保存素材标签切换后的合成帧。
+      await window.webContents.capturePage();
+      await new Promise(resolve => setTimeout(resolve, 150));
+      fs.writeFileSync(path.join(evidenceDirectory, 'glm-reference-disabled.png'), (await window.webContents.capturePage()).toPNG());
+      cases.push('GLM 未确认稿件的风格与实景上传入口关闭，已有素材保留且可移除');
+
+      const beforeMigration = new LocalProviderService(dataDirectory, safeStorage).read();
+      const legacyConfig = { ...beforeMigration, imageProtocol: 'glm-sglang', imageEndpoint: 'http://localhost:30000/v1/images/generations', imageModel: 'zai-org/GLM-Image', imageApiKey: 'RETIRED_GLM_SECRET' };
+      fs.writeFileSync(path.join(dataDirectory, 'providers.encrypted'), safeStorage.encryptString(JSON.stringify(legacyConfig)));
+      const migrated = (await call('getProviderSettings')).config;
+      assert.equal(migrated.imageProtocol, 'glm');
+      assert.equal(migrated.imageEndpoint, 'https://open.bigmodel.cn/api/paas/v4/images/generations');
+      assert.equal(migrated.imageModel, 'glm-image'); assert.equal(migrated.imageKeyConfigured, false);
+      const afterMigration = new LocalProviderService(dataDirectory, safeStorage).read();
+      assert.deepEqual(afterMigration, { ...beforeMigration, imageApiKey: undefined });
+      assert.equal(fs.readFileSync(path.join(dataDirectory, 'providers.encrypted')).includes(Buffer.from('RETIRED_GLM_SECRET')), false);
+      assert.equal((await call('readImageTextAsset', glmResult.data.assetId)).success, true);
+      assert.equal(requests.length, 10);
+      cases.push('旧图生图配置经系统安全存储迁移为官方文字预设，清除旧图片密钥，保留其他配置和素材且不发送请求');
+
+      await openSettings();
+      await waitFor('document.querySelectorAll("form[data-provider-module]").length===3');
+      const beforeSub2API = (await call('getProviderSettings')).config;
+      await click('image', '使用 Sub2API（异步生图） 配置');
+      assert.equal(await js(field('image', 'imageProtocol') + '.value'), 'sub2api');
+      assert.equal(await js(field('image', 'imageEndpoint') + '.value'), 'https://www.sevnx.lol/v1/images/generations');
+      assert.equal(await js(field('image', 'imageModel') + '.value'), 'gpt-image-2');
+      assert.equal(await js('Boolean(document.querySelector("[data-testid=sub2api-image-info]"))'), true);
+      assert.equal(requests.length, 10); assert.deepEqual((await call('getProviderSettings')).config, beforeSub2API);
+      await setField('image', 'imageApiKey', 'FIXTURE_SUB2API_SECRET'); await save('image');
+      const sub2apiStored = new LocalProviderService(dataDirectory, safeStorage).read();
+      assert.equal(sub2apiStored.imageProtocol, 'sub2api'); assert.equal(sub2apiStored.imageApiKey, 'FIXTURE_SUB2API_SECRET');
+      assert.equal(sub2apiStored.llmApiKey, beforeMigration.llmApiKey); assert.equal(sub2apiStored.videoParserApiKey, beforeMigration.videoParserApiKey);
+      assert.equal(fs.readFileSync(path.join(dataDirectory, 'providers.encrypted')).includes(Buffer.from('FIXTURE_SUB2API_SECRET')), false);
+      await navigate('二创工作台'); await openSettings();
+      await waitFor('document.querySelectorAll("form[data-provider-module]").length===3');
+      assert.equal(await js(field('image', 'imageProtocol') + '.value'), 'sub2api');
+      assert.equal(await js(field('image', 'imageApiKey') + '.value'), '');
+      cases.push('Sub2API 预设填表不请求，配置加密保存、重读且不回显密钥，保留其他模块配置');
+      await js(form('image') + '.scrollIntoView({block:"center",behavior:"instant"})');
+      await js('Promise.allSettled(document.getAnimations().filter(animation=>animation.effect?.getComputedTiming().iterations!==Infinity).map(animation=>animation.finished))');
+      await window.webContents.capturePage();
+      await new Promise(resolve => setTimeout(resolve, 150));
+      fs.writeFileSync(path.join(evidenceDirectory, 'sub2api-settings.png'), (await window.webContents.capturePage()).toPNG());
+
+      const subDraft = { ...structuredClone(draft), id: 'sub2api-provider-fixture', createdAt: new Date().toISOString(), title: 'Sub2API 异步验收' };
+      const subGenerated = await call('generateImageText', { draft: subDraft, pageId: 'page-one', taskId: randomUUID() });
+      assert.equal(subGenerated.success, true, subGenerated.error); assert.equal(requests.length, 14);
+      assert.ok(subGenerated.data.assetId); assert.equal((await call('readImageTextAsset', subGenerated.data.assetId)).success, true);
+      const subEditDraft = structuredClone(subGenerated.data.draft);
+      subEditDraft.references = [{ id: subGenerated.data.assetId, name: 'sub2api-reference.png', kind: 'scene', width: 32, height: 32 }];
+      subEditDraft.pages[0].referenceIds = [subGenerated.data.assetId]; subEditDraft.pages[0].text = '保留主体，修改标题';
+      const subEdited = await call('generateImageText', { draft: subEditDraft, pageId: 'page-one', taskId: randomUUID(), usePreviousImage: true });
+      assert.equal(subEdited.success, true, subEdited.error); assert.equal(requests.length, 18);
+      assert.notEqual(subEdited.data.assetId, subGenerated.data.assetId);
+      const editRequest = requests.find(item=>item.url==='https://www.sevnx.lol/v1/images/edits');
+      assert.ok(editRequest.body.prompt.includes('保留主体，修改标题'));
+      assert.equal((await call('readImageTextAsset', subGenerated.data.assetId)).success, true);
+      assert.deepEqual(subEdited.data.draft.pages[1], subGenerated.data.draft.pages[1]);
+      const subHistory = (await call('listImageTextHistory')).data.find(item=>item.id===subDraft.id);
+      assert.equal(subHistory.pages[0].assetId, subEdited.data.assetId);
+      const subLogs = fs.readdirSync(path.join(dataDirectory, 'logs')).filter(file=>file.endsWith('.log')).map(file=>fs.readFileSync(path.join(dataDirectory, 'logs', file), 'utf8')).join('\n');
+      assert.equal(subLogs.includes('FIXTURE_SUB2API_SECRET'), false);
+      cases.push('Sub2API 实际 IPC 异步文字生图，经 processing 与 completed 轮询后下载落盘并写入历史');
+      cases.push('Sub2API 参考图和本页文字经 multipart 编辑，上一版图片去重，保留旧资产和其他页面');
+
+      fs.writeFileSync(path.join(evidenceDirectory, 'acceptance.json'), JSON.stringify({ date: new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' }), version: metadata.version, packaged: remotePackage, supplier: 'isolated fixtures', requests: requests.length, cases }, null, 2), 'utf8');
       console.log(JSON.stringify({ success: true, cases: cases.length, requests: requests.length, evidenceDirectory }));
       completed = true; clearTimeout(timer); app.quit();
     } catch (error) {
       console.error(error);
       fs.mkdirSync(evidenceDirectory, { recursive: true });
       fs.writeFileSync(path.join(evidenceDirectory, 'failure.png'), (await window.webContents.capturePage()).toPNG());
-      fs.writeFileSync(path.join(evidenceDirectory, 'failure.json'), JSON.stringify({ message: error.message, cases }, null, 2), 'utf8');
+      fs.writeFileSync(path.join(evidenceDirectory, 'failure.json'), JSON.stringify({ message: error.message, cases, ui: await js('({dialogs:Array.from(document.querySelectorAll(".dialog-popup[role=dialog]")).map(el=>({text:el.innerText,buttons:Array.from(el.querySelectorAll("button")).map(b=>b.textContent)})),nav:Array.from(document.querySelectorAll("nav button")).map(el=>el.getAttribute("aria-label"))})') }, null, 2), 'utf8');
       clearTimeout(timer); app.exit(1);
     }
   });
@@ -353,6 +569,7 @@ async function start() {
     testAuthServer = await createAuthServer({ dataDirectory: path.join(dataDirectory, 'auth-fixture'), adminPassword: password });
     await new Promise(resolve => testAuthServer.listen(0, '127.0.0.1', resolve));
     authOrigin = new URL(JSON.parse(fs.readFileSync(path.join(applicationPath, 'dist-electron/auth-config.json'), 'utf8')).url).origin;
+    fs.writeFileSync(path.join(dataDirectory, 'auth-server-binding.json'), JSON.stringify({ version: 1, url: authOrigin }));
     fixtureAuthOrigin = 'http://127.0.0.1:' + testAuthServer.address().port;
   }
   require(path.join(applicationPath, 'dist-electron', 'main.js'));

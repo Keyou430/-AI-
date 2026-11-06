@@ -2,6 +2,7 @@ import http, { type IncomingMessage } from 'node:http';
 import { randomBytes, createHash } from 'node:crypto';
 import { isIP } from 'node:net';
 import { AuthError, AuthService } from '../electron/services/authService';
+import { AccountDisabledError, type ApiResetUser } from '../electron/services/authError';
 import { LocalSQLiteManager } from '../electron/db/sqliteService';
 import { RuntimeLogger } from '../electron/services/runtimeLogger';
 import path from 'node:path';
@@ -53,7 +54,7 @@ export async function createAuthServer(options: ServerOptions) {
       auth.logout(0);
       logger.write('info', 'auth.admin-initialized');
     }
-    type Session = { id: number; userId: string; expiresAt: number };
+    type Session = { id: number; userId: string; expiresAt: number; disabledUser?: ApiResetUser };
     const sessions = new Map<string, Session>();
     const failures = new Map<string, { count: number; expiresAt: number }>();
     const sources = new Map<string, { count: number; expiresAt: number }>();
@@ -66,8 +67,13 @@ export async function createAuthServer(options: ServerOptions) {
       sessions.delete(key);
       auth.logout(session.id);
     };
-    const revokeUser = (userId: string) => {
-      for (const [key, session] of sessions) if (session.userId === userId) removeSession(key);
+    const revokeUser = (userId: string, disabledUser?: ApiResetUser) => {
+      for (const [key, session] of sessions) if (session.userId === userId) {
+        if (disabledUser) {
+          auth.logout(session.id);
+          session.disabledUser = disabledUser;
+        } else if (!session.disabledUser) removeSession(key);
+      }
     };
     const cleanup = () => {
       const now = Date.now();
@@ -128,18 +134,22 @@ export async function createAuthServer(options: ServerOptions) {
         sessionKey = token ? hash(token) : undefined;
         const session = sessionKey ? sessions.get(sessionKey) : undefined;
         if (!session) throw new AuthError('AUTH_REQUIRED', '请重新登录');
+        if (route === 'POST /v1/logout') {
+          removeSession(sessionKey!); send(200, { success: true }); return;
+        }
         const adminOnly = req.url?.startsWith('/v1/users');
         const ensureSession = async () => {
           if (sessions.get(sessionKey!) !== session || session.expiresAt <= Date.now()) throw new AuthError('AUTH_REQUIRED', '请重新登录');
-          return auth.requireUser(session.id, adminOnly);
+          if (session.disabledUser) throw new AccountDisabledError(session.disabledUser);
+          const user = await auth.requireUser(session.id, adminOnly);
+          if (session.disabledUser) throw new AccountDisabledError(session.disabledUser);
+          if (sessions.get(sessionKey!) !== session || session.expiresAt <= Date.now()) throw new AuthError('AUTH_REQUIRED', '请重新登录');
+          return user;
         };
         const actor = await ensureSession();
         actorId = actor.id;
         if (route === 'GET /v1/me') { send(200, { success: true, user: actor }); return; }
-        if (route === 'POST /v1/logout') {
-          removeSession(sessionKey!);
-          send(200, { success: true });
-        } else if (route === 'GET /v1/users') {
+        if (route === 'GET /v1/users') {
           send(200, { success: true, users: await auth.listUsers(session.id) });
         } else {
           const input = await readBody(req);
@@ -150,7 +160,10 @@ export async function createAuthServer(options: ServerOptions) {
             targetId = user.id; send(200, { success: true, user });
           } else if (route === 'POST /v1/users/status') {
             await auth.setActive(session.id, input.userId, input.active);
-            if (!input.active) revokeUser(input.userId);
+            if (!input.active) {
+              const user = db.findUser('id', input.userId)!;
+              revokeUser(user.id, { id: user.id, role: user.role, apiResetVersion: user.api_reset_version ?? 0 });
+            }
             send(200, { success: true });
           } else if (route === 'POST /v1/users/delete') {
             await auth.deleteUser(session.id, input.userId);
@@ -162,12 +175,15 @@ export async function createAuthServer(options: ServerOptions) {
         }
         logger.write('info', 'auth.operation', { channel: route, actorId, targetId, outcome: 'success' });
       } catch (error) {
+        const disabledUser = sessionKey ? sessions.get(sessionKey)?.disabledUser : undefined;
+        if (disabledUser && error instanceof AuthError && error.code === 'AUTH_REQUIRED') error = new AccountDisabledError(disabledUser);
         const code = error instanceof AuthError ? error.code : 'INTERNAL_ERROR';
-        if (sessionKey && ['AUTH_REQUIRED', 'ACCOUNT_DISABLED'].includes(code)) removeSession(sessionKey);
+        if (sessionKey && code === 'AUTH_REQUIRED') removeSession(sessionKey);
         logger.write('warn', 'auth.failed', { actorId, targetId, channel: route, errorCode: code, error });
         const status = code === 'RATE_LIMITED' ? 429 : code === 'INTERNAL_ERROR' || code === 'SERVICE_BUSY' ? 503 :
           ['AUTH_REQUIRED', 'INVALID_CREDENTIALS', 'ACCOUNT_DISABLED'].includes(code) ? 401 : code === 'FORBIDDEN' ? 403 : 400;
-        send(status, { success: false, type: 'error', errorCode: code });
+        send(status, { success: false, type: 'error', errorCode: code,
+          ...(error instanceof AccountDisabledError ? { disabledUser: error.user } : {}) });
       }
     });
     // 关闭服务时撤销全部会话。

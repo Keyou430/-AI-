@@ -103,7 +103,7 @@ for (const action of ['disable', 'password', 'logout', 'expiry'] as const) {
       let arrived!: () => void; const first = new Promise<void>(resolve => { arrived = resolve; });
       let chunks = 0;
       const running = f.member.runAuthorizedTask(2, signal => streamGenerateScript(f.generation, () => { chunks++; arrived(); }, signal), undefined, 20);
-      const rejected = assert.rejects(running, { code: 'AUTH_REQUIRED' });
+      const rejected = assert.rejects(running, { code: action === 'disable' ? 'ACCOUNT_DISABLED' : 'AUTH_REQUIRED' });
       await first;
       if (action === 'disable') await f.client.setActive(1, f.user.id, false);
       if (action === 'password') await f.client.resetPassword(1, f.user.id, password + '-new');
@@ -173,7 +173,7 @@ test('停用账号会将取消信号传递到正在生成的上游请求', async
     let arrived!: () => void; const first = new Promise<void>(resolve => { arrived = resolve; });
     const running = f.member.runAuthorizedTask(2, signal => streamGenerateScript({ ...generation,
       config: { apiKey: 'local-fixture-key', baseURL: 'https://provider.example/v1', model: 'local-model' } }, () => arrived(), signal), undefined, 20);
-    const rejected = assert.rejects(running, { code: 'AUTH_REQUIRED' });
+    const rejected = assert.rejects(running, { code: 'ACCOUNT_DISABLED' });
     await first; await f.client.setActive(1, f.user.id, false); await rejected;
     assert.equal(upstreamAborted, true);
   } finally { globalThis.fetch = originalFetch; await f.dispose(); }

@@ -1,7 +1,7 @@
 import type { VideoParserOptions, VideoParserProvider } from './videoParserConfig';
 
 export type ProviderModule = 'llm' | 'extraction' | 'image';
-export type ImageProtocol = 'agnes' | 'seedream';
+export type ImageProtocol = 'agnes' | 'seedream' | 'glm' | 'sub2api';
 export interface ProviderSettings {
   llmBaseUrl: string;
   llmModel: string;

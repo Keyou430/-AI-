@@ -10,6 +10,7 @@ import { optimizationImpact, removeImageReference } from '../../electron/service
 import { ImageTextStyleCardEditor } from '../components/imageText/ImageTextReviewPanel';
 import { affectedPages, publicationText } from '../../electron/services/imageTextModel';
 import { IMAGE_RATIOS, type ImageTextDraft, type ImageReference } from '../../electron/services/imageTextTypes';
+import type { ImageProtocol } from '../../electron/services/providerTypes';
 import { ImageTextReferences } from '../components/imageText/ImageTextReferences';
 import { ImageTextResult } from '../components/imageText/ImageTextResult';
 import { ExtractedContentDetails } from '../components/ExtractedContentDetails';
@@ -38,6 +39,8 @@ export function ImageTextView() {
   const { draft, taskId, activePageId } = state;
   const busy = !!taskId;
   const parsing = useAppStore(s => s.isParsingVideo);
+  const [imageProtocol, setImageProtocol] = useState<ImageProtocol | null>(null);
+  const supportsImageReferences = imageProtocol !== null && imageProtocol !== 'glm';
   const [link, setLink] = useState('');
   const [localError, setLocalError] = useState('');
   const [optimization, setOptimization] = useState<{ draft: ImageTextDraft; pageId?: string } | null>(null);
@@ -57,6 +60,15 @@ export function ImageTextView() {
     setMobileStep(draft?.confirmed ? 'result' : 'plan');
     if (planScroll.current) planScroll.current.scrollTop = 0;
   }, [draft?.id, draft?.confirmed]);
+  useEffect(() => {
+    let active = true;
+    void window.electronAPI?.getProviderSettings().then(result => {
+      if (!active) return;
+      if (result.success && result.config) setImageProtocol(result.config.imageProtocol || 'agnes');
+      else setLocalError(result.error || '读取图片生成配置失败，请重新进入图文页面后重试。');
+    }).catch(() => { if (active) setLocalError('读取图片生成配置失败，请重新进入图文页面后重试。'); });
+    return () => { active = false; };
+  }, []);
   const page = draft?.pages.find(p => p.id === activePageId) || draft?.pages[0];
   const report = (error: unknown) => { const message = error instanceof Error ? error.message : '图文操作失败，请重试。'; setLocalError(message); notifyError(message); };
   const extract = async () => {
@@ -66,6 +78,7 @@ export function ImageTextView() {
   };
   const startOptimize = (pageId?: string) => {
     if (!draft || busy || uploading) return;
+    if (imageProtocol === null) { report(new Error('尚未读取图片生成配置，请稍后重试；若持续失败，请重新进入图文页面。')); return; }
     setOptimization({ draft: structuredClone(draft), pageId }); setInstruction(''); setPreviewReady(false); setUsePrevious(null); setLocalError('');
   };
   const uploadOptimizationReference = async () => {
@@ -84,7 +97,7 @@ export function ImageTextView() {
         useImageTextStore.setState({ draft: { ...currentDraftAfterImport, references: [...currentDraftAfterImport.references, ...refs] } });
       }
       setOptimization(current => current === original ? { ...original, draft: { ...original.draft, references: [...original.draft.references, ...refs],
-        pages: original.draft.pages.map(p => p.id === original.pageId ? { ...p, referenceIds: [...p.referenceIds, ...refs.map(r => r.id)] } : p) } } : current);
+        pages: original.draft.pages.map(p => supportsImageReferences && p.id === original.pageId ? { ...p, referenceIds: [...p.referenceIds, ...refs.map(r => r.id)] } : p) } } : current);
     } catch (error) { report(error); } finally { setUploading(false); }
   };
   const addReferences = async (kind: ImageReference['kind']) => {
@@ -113,13 +126,13 @@ export function ImageTextView() {
   };
   const optimizedPage = optimization?.draft.pages.find(p => p.id === optimization.pageId);
   const originalPage = draft?.pages.find(p => p.id === optimization?.pageId);
-  const previousDefault = usePrevious ?? (!!originalPage?.assetId && optimizedPage?.text !== originalPage.text && optimizedPage?.visual === originalPage.visual && JSON.stringify(optimizedPage?.referenceIds) === JSON.stringify(originalPage.referenceIds));
+  const previousDefault = supportsImageReferences && (usePrevious ?? (!!originalPage?.assetId && optimizedPage?.text !== originalPage.text && optimizedPage?.visual === originalPage.visual && JSON.stringify(optimizedPage?.referenceIds) === JSON.stringify(originalPage.referenceIds)));
   const impact = optimization ? optimizationImpact(optimization.draft).filter(item => !optimization.pageId || item.pageId === optimization.pageId) : [];
   const patchOptimization = (patch: Partial<ImageTextDraft>) => setOptimization(current => current ? { ...current, draft: { ...current.draft, ...patch } } : current);
   const patchOptimizedPage = (patch: { text?: string; visual?: string; referenceIds?: string[] }) => setOptimization(current => current ? { ...current,
     draft: { ...current.draft, pages: current.draft.pages.map(p => p.id === current.pageId ? { ...p, ...patch } : p) } } : current);
   const referenceOptions = (references: ImageReference[], selected: string[], change: (ids: string[]) => void) => references.filter(r => r.kind === 'scene').map(ref =>
-    <label className="flex items-center gap-2 text-xs" key={ref.id}><input type="checkbox" checked={selected.includes(ref.id)} onChange={e => change(e.target.checked ? [...selected, ref.id] : selected.filter(id => id !== ref.id))} />{ref.name} · 保留关键外观</label>);
+    <label className="flex items-center gap-2 text-xs" key={ref.id}><input type="checkbox" checked={selected.includes(ref.id)} disabled={!supportsImageReferences && !selected.includes(ref.id)} onChange={e => change(e.target.checked ? [...selected, ref.id] : selected.filter(id => id !== ref.id))} />{ref.name} · 保留关键外观</label>);
   return <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
     <header className="shrink-0 space-y-2 border-b bg-card px-4 py-3 md:px-6">
       <div className="flex items-center gap-3 overflow-x-auto" data-testid="image-text-topbar">
@@ -193,9 +206,10 @@ export function ImageTextView() {
                 <Button size="sm" disabled={busy || uploading || !draft.body} onClick={() => { void navigator.clipboard.writeText(publicationText(draft)).then(() => notifySuccess('发布文案已复制')).catch(report); }}>复制文案</Button>
               </Tabs.Panel>}
               <Tabs.Panel value="assets" keepMounted className="space-y-4">
-                {!draft.confirmed && <><div className="flex flex-wrap gap-2"><Button size="sm" disabled={busy || uploading} onClick={() => { void addReferences('style'); }}>补传原帖参考图</Button><Button size="sm" disabled={busy || uploading} onClick={() => { void addReferences('scene'); }}>上传实际场景参考图（可选）</Button></div><p className="muted-copy">原帖图跟随风格与比例；实景图保留关键外观，首轮供整套参考，生成后可按页绑定。</p></>}
+                {imageProtocol === 'glm' && <p className="muted-copy">当前 GLM-Image 接入仅支持文字生图，参考图上传已关闭。使用参考图请切换 Agnes／Seedream；继续使用 GLM 前请移除风格图或取消本页绑定。</p>}
+                {!draft.confirmed && <><div className="flex flex-wrap gap-2"><Button size="sm" disabled={busy || uploading || !supportsImageReferences} onClick={() => { void addReferences('style'); }}>补传原帖参考图</Button><Button size="sm" disabled={busy || uploading || !supportsImageReferences} onClick={() => { void addReferences('scene'); }}>上传实际场景参考图（可选）</Button></div><p className="muted-copy">原帖图跟随风格与比例；实景图保留关键外观，首轮供整套参考，生成后可按页绑定。</p></>}
                 <ImageTextReferences references={draft.references} disabled={busy || uploading} onRemove={id => { void removeReference(id); }} />
-                {draft.confirmed && !draft.references.length && <p className="muted-copy">当前没有参考素材，可在图片优化中按页补传实际场景图。</p>}
+                {draft.confirmed && !draft.references.length && <p className="muted-copy">{imageProtocol === 'glm' ? '当前 GLM 根据文字要求重新生成图片；使用参考图请切换 Agnes／Seedream。' : '当前没有参考素材，可在图片优化中按页补传实际场景图。'}</p>}
                 <details className="disclosure"><summary>原帖素材</summary><div className="mt-3 space-y-3"><p className="reading-text">{draft.source.publishedText || draft.source.transcript}</p><ExtractedContentDetails content={draft.source} /></div></details>
               </Tabs.Panel>
 
@@ -216,16 +230,17 @@ export function ImageTextView() {
         </>}</section>
     </div>
     <Modal open={!!optimization} onOpenChange={open => { if (!open) setOptimization(null); }} busy={uploading || busy} title={optimizedPage ? '图片优化' : '全局优化'}
-      description={optimizedPage ? '仅更新当前指定图片，其他页面保持不变。可补传真实场景图，保留关键外观。' : '优化整套图文，仅重生成受影响页面。仅修改发布文案不会触发生图。整套风格或比例改变将影响全部页面。'}
+      description={optimizedPage ? (imageProtocol === 'glm' ? '根据本页文字和画面要求重新生成当前图片。' : '仅更新当前指定图片，其他页面保持不变。可补传真实场景图，保留关键外观。') : '优化整套图文，仅重生成受影响页面。仅修改发布文案不会触发生图。整套风格或比例改变将影响全部页面。'}
       footer={<><Button variant="ghost" onClick={() => { if (busy) void state.cancel(); setOptimization(null); }} disabled={uploading}>取消</Button><Button variant="primary" disabled={busy || uploading} onClick={() => { void submitOptimization(); }}>{optimizedPage ? '优化并重生成本图' : instruction.trim() && !previewReady ? '生成优化预览' : impact.length ? '应用全局优化' : '仅更新文案'}</Button></>}>
       {optimization && <fieldset disabled={busy || uploading} className="space-y-4">
         {localError && <p role="alert" className="text-sm text-destructive">{localError}</p>}
         {!optimizedPage && <div className="rounded-md border p-3 text-xs" aria-label="优化影响预览"><p>{impact.length ? '预计生成 ' + impact.length + ' 张图片' : '仅更新文案，不触发生图'}</p>{impact.map(item => <p key={item.pageId}>第 {item.number} 图：{item.reasons.join('、')}</p>)}</div>}
+        {imageProtocol === 'glm' && <p className="muted-copy">当前 GLM-Image 接入仅支持文字生图，参考图上传和上一版图片参考已关闭；已有绑定请先取消，或切换 Agnes／Seedream。</p>}
         {optimizedPage ? <>
           <TextField label="本图文字" value={optimizedPage.text} onChange={text => patchOptimizedPage({ text })} />
           <TextField label="画面要求／优化要求" value={optimizedPage.visual} onChange={visual => patchOptimizedPage({ visual })} rows={5} />
-          <Button size="sm" disabled={uploading} onClick={() => { void uploadOptimizationReference(); }}>为本图补传实际场景图（可选）</Button>
-          <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={previousDefault} disabled={!originalPage?.assetId} onChange={e => setUsePrevious(e.target.checked)} />附带本页上一版图片作参考（仅改文字默认开启，改画面默认关闭）</label>
+          <Button size="sm" disabled={uploading || !supportsImageReferences} onClick={() => { void uploadOptimizationReference(); }}>为本图补传实际场景图（可选）</Button>
+          <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={previousDefault} disabled={!originalPage?.assetId || !supportsImageReferences} onChange={e => setUsePrevious(e.target.checked)} />附带本页上一版图片作参考（{imageProtocol === 'glm' ? '当前 GLM 接入不支持' : '仅改文字默认开启，改画面默认关闭'}）</label>
           {referenceOptions(optimization.draft.references, optimizedPage.referenceIds, referenceIds => patchOptimizedPage({ referenceIds }))}
           <ImageTextReferences references={optimization.draft.references} disabled={busy || uploading} onRemove={id => { void removeReference(id); }} />
         </> : <>

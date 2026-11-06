@@ -5,6 +5,7 @@ import { registerImageTextHandlers } from './services/imageTextIpc';
 import { StorageLocationService } from './services/storageLocation';
 import { userFacingError } from './services/userFacingError';
 import { LocalProviderService } from './services/localProviderService';
+import { ProviderResetService } from './services/providerResetService';
 import type { ProviderModuleInput } from './services/providerTypes';
 import { testProviderConnection } from './services/providerConnectionTest';
 import { app, BrowserWindow, ipcMain, dialog, shell, safeStorage, Menu } from 'electron';
@@ -52,18 +53,20 @@ let imageAssetLocation: ImageAssetLocationService;
 let sqliteService: LocalSQLiteManager;
 let authService: ReturnType<typeof createDesktopAuth>;
 const localProviders = new LocalProviderService(app.getPath('userData'), safeStorage);
+const providerReset = new ProviderResetService(app.getPath('userData'), () => localProviders.reset());
 
 const activeTasks = new Map<number, Set<AbortController>>();
 function cancelTasks(senderId: number) {
   for (const controller of activeTasks.get(senderId) || []) controller.abort();
 }
-async function withTask<T>(senderId: number, task: (signal: AbortSignal) => Promise<T>): Promise<T> {
+async function withTask<T>(senderId: number, task: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal): Promise<T> {
   const controller = new AbortController();
   let tasks = activeTasks.get(senderId);
   if (!tasks) { tasks = new Set(); activeTasks.set(senderId, tasks); }
   tasks.add(controller);
   try { return authService instanceof RemoteAuthService ?
-    await authService.runAuthorizedTask(senderId, task, controller.signal) : await task(controller.signal); }
+    await authService.runAuthorizedTask(senderId, task, AbortSignal.any([controller.signal, ...(signal ? [signal] : [])])) :
+    await task(AbortSignal.any([controller.signal, ...(signal ? [signal] : [])])); }
   finally { tasks.delete(controller); if (!tasks.size) activeTasks.delete(senderId); }
 }
 
@@ -87,7 +90,11 @@ function handle(channel: string, listener: (event: IpcMainInvokeEvent, payload: 
       if (event.sender !== mainWindow?.webContents || event.senderFrame !== event.sender.mainFrame) {
         throw new AuthError('FORBIDDEN', '请求来源无效');
       }
-      const actor = !options.public ? await authService.requireUser(event.sender.id, options.admin) : undefined;
+      // 图文任务在 withTask 内等待实时授权，先登记任务以支持等待期间取消。
+      const deferredAuth = authService instanceof RemoteAuthService &&
+        ['image-text:plan', 'image-text:generate', 'image-text:cancel'].includes(channel);
+      if (deferredAuth && authService instanceof RemoteAuthService && !authService.hasSession(event.sender.id)) throw new AuthError('AUTH_REQUIRED', '请先登录');
+      const actor = !options.public && !deferredAuth ? await authService.requireUser(event.sender.id, options.admin) : undefined;
       const result = await listener(event, payload, operationId);
       const outcome = result?.canceled ? 'canceled' : result?.success === false ? 'failed' : 'success';
       runtimeLogger.write(outcome === 'failed' ? 'warn' : 'info', 'operation.completed', {
@@ -103,7 +110,7 @@ function handle(channel: string, listener: (event: IpcMainInvokeEvent, payload: 
         ...context, outcome: 'failed', errorCode: code, error,
         durationMs: Math.round(performance.now() - started),
       });
-      if (['AUTH_REQUIRED', 'ACCOUNT_DISABLED', 'AUTH_UNAVAILABLE'].includes(code) &&
+      if (['AUTH_REQUIRED', 'ACCOUNT_DISABLED', 'AUTH_UNAVAILABLE', 'API_RESET_FAILED'].includes(code) &&
           (!(authService instanceof RemoteAuthService) || !authService.hasSession(event.sender.id))) {
         cancelTasks(event.sender.id);
         event.sender.send('auth:required', { message });
@@ -182,7 +189,7 @@ app.whenReady().then(async () => {
     runtimeLogger.write('warn', 'database.engine-fallback', { error, engine: 'sqlite3-wasm' });
   });
   imageAssetLocation.activatePending(storageLocation.get().directory);
-  authService = createDesktopAuth(sqliteService, path.join(__dirname, '..'), __dirname, app.getPath('userData'), runtimeLogger);
+  authService = createDesktopAuth(sqliteService, path.join(__dirname, '..'), __dirname, app.getPath('userData'), runtimeLogger, providerReset);
   await sqliteService.ensureInitialized();
   await recoverImageTextCleanup(sqliteService,new ImageTextAssets(imageAssetLocation.root(storageLocation.get().directory)))
     .catch(error => runtimeLogger.write('warn','image-text.cleanup-pending',{error}));
@@ -197,7 +204,7 @@ app.whenReady().then(async () => {
   });
 }).catch((error) => {
   runtimeLogger.write('error', 'app.startup-failed', { error });
-  dialog.showErrorBox('启动失败', '应用初始化失败，请查看运行日志：' + runtimeLogger.directory);
+  dialog.showErrorBox('启动失败', error instanceof AuthError && error.code === 'AUTH_CONFIG_INVALID' ? error.message : '应用初始化失败，请查看运行日志：' + runtimeLogger.directory);
   app.exit(1);
 });
 

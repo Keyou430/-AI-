@@ -1,0 +1,42 @@
+{
+  "date": "2026-11-04",
+  "scope": "Sub2API 异步生图预设（源码）",
+  "packaged": false,
+  "commercialRequests": 0,
+  "checks": {
+    "tests": {
+      "command": "node --import tsx --test --test-concurrency=1 --test-timeout=60000 tests/*.test.ts",
+      "passed": 233,
+      "failed": 0,
+      "newSub2apiTests": 20
+    },
+    "build": {
+      "command": "npm run build",
+      "exitCode": 0
+    },
+    "serverTypes": {
+      "command": "tsc -p tsconfig.server.json --noEmit",
+      "exitCode": 0
+    },
+    "desktop": {
+      "command": "electron scripts/providerSettingsSmoke.cjs",
+      "exitCode": 0,
+      "cases": 33,
+      "mockedRequests": 18
+    }
+  },
+  "initialFailures": "首轮默认并发测试 227 通过、6 失败；6 项旧授权测试在登录阶段抛出 Undici fetch failed: bad port，未退出的 fixture 子进程已结束。未修改授权代码及其测试，串行完整复验 233 项通过。首轮桌面脚本误读取不存在的 app.log，已按实际日志目录修正后 33 项通过。",
+  "sha256": {
+    "electron/services/providerConfig.ts": "d530666b567939393af52ae6b029816e8156a37ff771d4b0c9c36e559b8359e9",
+    "electron/services/providerTypes.ts": "da935dd50c3a48f8e8c6bf4e7964aefe93934b0cbd06dfcbb32650b1ab26340e",
+    "electron/services/localProviderService.ts": "acd1078f4ca597a24ad15af21c4ffef35f729cd850ea602b000b6b8b77ebdbf5",
+    "electron/services/imageGenerationService.ts": "6733f28c99b58c40f74d784d6263e86d8edc7542684620958435cc3a7aaef871",
+    "src/components/ProviderSettingsForm.tsx": "adba7f919b5b3d84c9ba43f88afe8b6a048607b4d8ff0ed7859cae2c56657617",
+    "scripts/providerSettingsSmoke.cjs": "dd441ab950fa60bf6bb29c4effbfbc39af103185563e4a553e9cf115d7506bad",
+    "README.md": "3149f16b2cfd62b5a57a110d63bb9c2d11584393d530d5001cf6dbca0c568bf4",
+    "electron/services/sub2apiImageService.ts": "6ba79b2fd71d5e9c864ff9448b53e718bc3297e79085ba3259b5395d1567695d",
+    "electron/services/imageProviderResponse.ts": "beb100737057139bbfafa7d9bbaf8a8673f40aa92beb2f16eed7992fc1fe08fa",
+    "tests/sub2apiImageService.test.ts": "f415a6ed698b6f73ffc80aa839f7925bec763f915e5de22df7750a3892ee477f",
+    "docs/Sub2API异步生图预设.md": "945e487ca956fd4e8350c1d99880a24304cc0a6cce17f4cf25518cec13348b85"
+  }
+}

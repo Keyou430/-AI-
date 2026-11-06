@@ -113,6 +113,7 @@ export interface DBUser {
   display_name: string;
   role: 'admin' | 'member';
   is_active: number;
+  api_reset_version?: number;
   created_at: string;
   last_login_at: string | null;
 }
@@ -126,6 +127,7 @@ CREATE TABLE IF NOT EXISTS users (
   display_name TEXT NOT NULL,
   role TEXT NOT NULL CHECK(role IN ('admin', 'member')),
   is_active INTEGER NOT NULL DEFAULT 1,
+  api_reset_version INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   last_login_at TEXT
 );
@@ -290,6 +292,9 @@ export class LocalSQLiteManager {
       this.nativeDb = new BetterSqlite3(this.dbPath);
       this.nativeDb.pragma('journal_mode = WAL');
       this.nativeDb.exec(CREATE_TABLES_SQL);
+      if (!this.nativeDb.prepare('PRAGMA table_info(users)').all().some((column: { name: string }) => column.name === 'api_reset_version')) {
+        this.nativeDb.exec('ALTER TABLE users ADD COLUMN api_reset_version INTEGER NOT NULL DEFAULT 0');
+      }
       try {
         this.nativeDb.exec(
           `ALTER TABLE history_records ADD COLUMN conversation_messages_json TEXT NOT NULL DEFAULT '[]'`
@@ -314,6 +319,9 @@ export class LocalSQLiteManager {
         this.wasmDb = new SQL.Database();
       }
       this.wasmDb.run(CREATE_TABLES_SQL);
+      if (!this.wasmDb.exec('PRAGMA table_info(users)')[0].values.some((column: unknown[]) => column[1] === 'api_reset_version')) {
+        this.wasmDb.run('ALTER TABLE users ADD COLUMN api_reset_version INTEGER NOT NULL DEFAULT 0');
+      }
       try {
         this.wasmDb.run(
           `ALTER TABLE history_records ADD COLUMN conversation_messages_json TEXT NOT NULL DEFAULT '[]'`
@@ -794,12 +802,13 @@ export class LocalSQLiteManager {
   }
 
   public saveUser(user: DBUser): void {
-    const sql = `INSERT INTO users (id, username, password_hash, salt, display_name, role, is_active, created_at, last_login_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    const sql = `INSERT INTO users (id, username, password_hash, salt, display_name, role, is_active, created_at, last_login_at, api_reset_version)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET password_hash=excluded.password_hash, salt=excluded.salt,
-        display_name=excluded.display_name, is_active=excluded.is_active, last_login_at=excluded.last_login_at`;
+        display_name=excluded.display_name, is_active=excluded.is_active, last_login_at=excluded.last_login_at,
+        api_reset_version=excluded.api_reset_version`;
     const values = [user.id, user.username, user.password_hash, user.salt, user.display_name,
-      user.role, user.is_active, user.created_at, user.last_login_at];
+      user.role, user.is_active, user.created_at, user.last_login_at, user.api_reset_version ?? 0];
     if (this.nativeDb) this.nativeDb.prepare(sql).run(...values);
     else {
       this.wasmDb.run(sql, values);

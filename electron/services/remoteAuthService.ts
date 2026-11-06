@@ -1,4 +1,5 @@
-import { AuthError } from './authError';
+import { setTimeout as delay } from 'node:timers/promises';
+import { AccountDisabledError, AuthError, type AuthLifecycle } from './authError';
 import type { AuthService, AuthUser } from './authService';
 import type { RuntimeLogger } from './runtimeLogger';
 
@@ -27,20 +28,21 @@ const authMessages: Record<string, string> = {
 // 员工版只使用服务端账号；凭据和令牌均不写入本地数据库。
 export class RemoteAuthService implements Pick<AuthService,
   'status' | 'setup' | 'login' | 'requireUser' | 'listUsers' | 'createUser' | 'setActive' | 'resetPassword' | 'deleteUser'> {
-  private readonly sessions = new Map<number, { token: string; generation: number; controller: AbortController }>();
+  private readonly sessions = new Map<number, { token: string; user: AuthUser; generation: number; controller: AbortController; verifiedAt: number; verification?: Promise<AuthUser> }>();
   private readonly generations = new Map<number, number>();
   private readonly baseUrl: string;
   constructor(url: string, private readonly timeoutMs = 5000, allowLoopback = false,
-    private readonly logger?: Pick<RuntimeLogger, 'write'>) {
+    private readonly logger?: Pick<RuntimeLogger, 'write'>, private readonly lifecycle?: AuthLifecycle) {
     this.baseUrl = validateAuthUrl(url, allowLoopback);
   }
 
-  private async request(route: string, input?: unknown, token?: string): Promise<any> {
+  private async request(route: string, input?: unknown, token?: string, kind: 'initial' | 'retry' = 'initial', signal?: AbortSignal): Promise<any> {
+    const startedAt = Date.now();
     try {
       const response = await fetch(this.baseUrl + '/v1/' + route, {
         method: input === undefined ? 'GET' : 'POST', redirect: 'error',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
-        body: input === undefined ? undefined : JSON.stringify(input), signal: AbortSignal.timeout(this.timeoutMs),
+        body: input === undefined ? undefined : JSON.stringify(input), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(this.timeoutMs)]) : AbortSignal.timeout(this.timeoutMs),
       });
       if (route === 'users/delete' && response.status === 404) {
         throw new AuthError('SERVICE_UPDATE_REQUIRED', '授权服务尚未支持删除账号，请联系管理员更新服务后重试');
@@ -48,13 +50,25 @@ export class RemoteAuthService implements Pick<AuthService,
       const data = await response.json();
       if (!response.ok || !data.success) {
         const code = typeof data.errorCode === 'string' && authMessages[data.errorCode] ? data.errorCode : 'AUTH_UNAVAILABLE';
+        if (code === 'ACCOUNT_DISABLED' && typeof data.disabledUser?.id === 'string' &&
+            ['admin', 'member'].includes(data.disabledUser.role) && Number.isSafeInteger(data.disabledUser.apiResetVersion) && data.disabledUser.apiResetVersion >= 0) {
+          throw new AccountDisabledError({ id: data.disabledUser.id, role: data.disabledUser.role, apiResetVersion: data.disabledUser.apiResetVersion });
+        }
         throw new AuthError(code, authMessages[code] || '授权服务暂时不可用，请稍后重试', { cause: { status: response.status } });
       }
+      this.logger?.write('info', 'auth.request-completed', {
+        channel: 'auth:' + route, durationMs: Date.now() - startedAt, kind, outcome: 'success',
+      });
       return data;
     } catch (error) {
-      if (error instanceof AuthError) throw error;
-      throw new AuthError('AUTH_UNAVAILABLE', error instanceof Error && error.name === 'TimeoutError'
-        ? '授权服务响应超时，请稍后重试' : '暂时无法连接授权服务，请检查网络后重试', { cause: error });
+      const failure = error instanceof AuthError ? error : new AuthError('AUTH_UNAVAILABLE',
+        error instanceof Error && error.name === 'TimeoutError'
+          ? '授权服务响应超时，请稍后重试' : '暂时无法连接授权服务，请检查网络后重试', { cause: error });
+      this.logger?.write('warn', 'auth.request-failed', {
+        channel: 'auth:' + route, durationMs: Date.now() - startedAt, kind, outcome: 'failed',
+        errorCode: failure.code, error: failure,
+      });
+      throw failure;
     }
   }
 
@@ -92,7 +106,13 @@ export class RemoteAuthService implements Pick<AuthService,
     const generation = this.generations.get(senderId) || 0;
     await logout;
     if (this.generations.get(senderId) !== generation) throw new AuthError('AUTH_REQUIRED', '登录已取消，请重新登录');
-    const result = await this.request('login', { username, password });
+    let result;
+    try { result = await this.request('login', { username, password }); }
+    catch (error) {
+      if (this.generations.get(senderId) !== generation) throw new AuthError('AUTH_REQUIRED', '登录已取消，请重新登录');
+      if (error instanceof AccountDisabledError) this.lifecycle?.disabled(error.user, this.baseUrl);
+      throw error;
+    }
     if (this.generations.get(senderId) !== generation) {
       void this.request('logout', {}, result.token).catch(() => {});
       throw new AuthError('AUTH_REQUIRED', '登录已取消，请重新登录');
@@ -101,7 +121,9 @@ export class RemoteAuthService implements Pick<AuthService,
         result.user.isActive !== true || !['admin', 'member'].includes(result.user.role)) {
       throw new AuthError('AUTH_UNAVAILABLE', '授权服务返回无效登录信息');
     }
-    this.sessions.set(senderId, { token: result.token, generation, controller: new AbortController() });
+    try { this.lifecycle?.signedIn(result.user, this.baseUrl); }
+    catch (error) { void this.request('logout', {}, result.token).catch(() => {}); throw error; }
+    this.sessions.set(senderId, { token: result.token, user: result.user, generation, controller: new AbortController(), verifiedAt: performance.now() });
     return result.user;
   }
   async logout(senderId: number, reason?: AuthError): Promise<void> {
@@ -109,33 +131,68 @@ export class RemoteAuthService implements Pick<AuthService,
     session?.controller.abort(reason);
     this.sessions.delete(senderId);
     this.generations.set(senderId, (this.generations.get(senderId) || 0) + 1);
-    if (session) await this.request('logout', {}, session.token).catch(() => {});
+    if (session) await Promise.allSettled([this.request('logout', {}, session.token), session.verification]);
   }
   private async authorized(senderId: number, route: string, input?: unknown): Promise<any> {
     const session = this.sessions.get(senderId);
     if (!session) throw new AuthError('AUTH_REQUIRED', '请先登录');
     try {
-      const result = await this.request(route, input, session.token);
+      let result;
+      try { result = await this.request(route, input, session.token, 'initial', session.controller.signal); }
+      catch (error) {
+        if (route !== 'me' || !(error instanceof AuthError) || error.code !== 'AUTH_UNAVAILABLE' ||
+            this.sessions.get(senderId) !== session) throw error;
+        this.logger?.write('warn', 'auth.verification-retry', {
+          senderId, channel: 'auth:' + route, errorCode: error.code, kind: 'retry',
+        });
+        await delay(250, undefined, { signal: session.controller.signal });
+        if (this.sessions.get(senderId) !== session) throw new AuthError('AUTH_REQUIRED', '登录已失效，请重新登录');
+        result = await this.request(route, input, session.token, 'retry', session.controller.signal);
+      }
       if (this.sessions.get(senderId) !== session) throw new AuthError('AUTH_REQUIRED', '登录已失效，请重新登录');
       return result;
     } catch (error) {
+      if (this.sessions.get(senderId) !== session) {
+        const reason = session.controller.signal.reason;
+        throw reason instanceof AuthError ? reason : new AuthError('AUTH_REQUIRED', '登录已失效，请重新登录');
+      }
       this.logger?.write('warn', 'auth.verification-failed', {
         senderId, channel: 'auth:' + route, error,
         errorCode: error instanceof AuthError ? error.code : 'AUTH_UNAVAILABLE',
       });
       if (error instanceof AuthError && ['AUTH_REQUIRED', 'ACCOUNT_DISABLED'].includes(error.code) &&
           this.sessions.get(senderId) === session) {
-        void this.logout(senderId, error);
+        let failure = error;
+        try {
+          if (error.code === 'ACCOUNT_DISABLED') {
+            const user = error instanceof AccountDisabledError ? error.user : session.user;
+            if (user.id === session.user.id && user.role === session.user.role) this.lifecycle?.disabled(user, this.baseUrl);
+          }
+        } catch (cleanupError) {
+          failure = cleanupError instanceof AuthError ? cleanupError : new AuthError('API_RESET_FAILED', '管理员已停用账号，但本地 API 配置清理失败，请重试登录。', { cause: cleanupError });
+        } finally { void this.logout(senderId, failure); }
+        throw failure;
       }
       throw error;
     }
   }
   async requireUser(senderId: number, adminOnly = false): Promise<AuthUser> {
-    const { user } = await this.authorized(senderId, 'me');
-    if (!user?.id || user.isActive !== true || !['admin', 'member'].includes(user.role)) {
-      void this.logout(senderId);
-      throw new AuthError('AUTH_REQUIRED', '登录已失效，请重新登录');
-    }
+    const session = this.sessions.get(senderId);
+    if (!session) throw new AuthError('AUTH_REQUIRED', '请先登录');
+    // 只合并在途查询；完成后下一次操作仍须向服务端实时校验。
+    const verification = session.verification ??= (async () => {
+      const { user } = await this.authorized(senderId, 'me');
+      if (!user?.id || user.isActive !== true || !['admin', 'member'].includes(user.role)) {
+        const error = new AuthError('AUTH_REQUIRED', '登录已失效，请重新登录');
+        void this.logout(senderId, error); throw error;
+      }
+      session.verifiedAt = performance.now();
+      return user as AuthUser;
+    })();
+    let user: AuthUser;
+    try { user = await verification; }
+    finally { if (session.verification === verification) session.verification = undefined; }
+    if (this.sessions.get(senderId) !== session) throw new AuthError('AUTH_REQUIRED', '登录已失效，请重新登录');
     if (adminOnly && user.role !== 'admin') throw new AuthError('FORBIDDEN', '仅管理员可执行此操作');
     return user;
   }
@@ -147,28 +204,78 @@ export class RemoteAuthService implements Pick<AuthService,
     await this.authorized(senderId, 'users/status', { userId, active });
   }
   async runAuthorizedTask<T>(senderId: number, task: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal,
-    intervalMs = 1000): Promise<T> {
+    intervalMs = 15000, graceMs = 60000): Promise<T> {
     const session = this.sessions.get(senderId);
     if (!session) throw new AuthError('AUTH_REQUIRED', '请先登录');
     const verification = new AbortController();
     const combined = AbortSignal.any([session.controller.signal, verification.signal, AbortSignal.timeout(180000), ...(signal ? [signal] : [])]);
-    const watch = this.watchSession(senderId, () => {}, intervalMs, error => verification.abort(error));
-    try {
-      await this.requireUser(senderId);
+    const remaining = () => session.verifiedAt + graceMs - performance.now();
+    const temporary = (error: unknown) => error instanceof AuthError && error.code === 'AUTH_UNAVAILABLE';
+    const verify = async () => {
       combined.throwIfAborted();
+      let onAbort!: () => void;
+      const canceled = new Promise<never>((_resolve, reject) => {
+        onAbort = () => reject(combined.reason);
+        combined.addEventListener('abort', onAbort, { once: true });
+      });
+      try { return await Promise.race([this.requireUser(senderId), canceled]); }
+      finally { combined.removeEventListener('abort', onAbort); }
+    };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let watch: ReturnType<RemoteAuthService['watchSession']> | undefined;
+    let recovering = false;
+    const defer = (error: unknown) => {
+      if (!temporary(error) || remaining() <= 0) { verification.abort(error); return; }
+      if (!recovering) {
+        recovering = true;
+        this.logger?.write('warn', 'auth.grace-started', { senderId, errorCode: 'AUTH_UNAVAILABLE' });
+      }
+      if (!timer) enforceDeadline();
+    };
+    const enforceDeadline = () => {
+      clearTimeout(timer); timer = undefined;
+      if (combined.aborted) return;
+      const left = remaining();
+      if (left <= 0) {
+        this.logger?.write('warn', 'auth.grace-expired', { senderId, errorCode: 'AUTH_UNAVAILABLE' });
+        verification.abort(new AuthError('AUTH_UNAVAILABLE', '授权连接未在宽限期内恢复，已停止处理；草稿和已保存图片已保留，请恢复网络后继续。'));
+      } else { timer = setTimeout(enforceDeadline, Math.ceil(left)); timer.unref(); }
+    };
+    try {
+      // 等待期间只查询身份，实时校验成功前不调用业务或供应商接口。
+      for (;;) {
+        try { await verify(); break; }
+        catch (error) {
+          combined.throwIfAborted();
+          if (!temporary(error) || remaining() <= 0) throw error;
+          defer(error);
+          await delay(Math.min(intervalMs, Math.ceil(remaining())), undefined, { signal: combined });
+          if (remaining() <= 0) throw error;
+        }
+      }
+      combined.throwIfAborted();
+      enforceDeadline();
+      watch = this.watchSession(senderId, () => {}, intervalMs, defer);
       const result = await task(combined);
       combined.throwIfAborted();
-      await this.requireUser(senderId);
+      try { await verify(); }
+      catch (error) {
+        combined.throwIfAborted();
+        if (!temporary(error) || remaining() <= 0) throw error;
+        // 业务已经完成，宽限内返回成功结果；下一任务仍必须实时校验。
+        defer(error);
+        this.logger?.write('warn', 'auth.result-preserved', { senderId, errorCode: 'AUTH_UNAVAILABLE' });
+      }
       combined.throwIfAborted();
       return result;
     } catch (error) {
-      const reason = verification.signal.reason ?? session.controller.signal.reason;
+      const reason = session.controller.signal.reason ?? verification.signal.reason;
       if (reason instanceof AuthError) throw reason;
       if (session.controller.signal.aborted || this.sessions.get(senderId) !== session) {
         throw new AuthError('AUTH_REQUIRED', '登录已失效，任务已取消');
       }
       throw error;
-    } finally { watch.stop(); }
+    } finally { watch?.stop(); clearTimeout(timer); }
   }
   async deleteUser(senderId: number, userId: string): Promise<void> {
     await this.authorized(senderId, 'users/delete', { userId });

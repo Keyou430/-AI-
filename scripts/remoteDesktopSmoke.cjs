@@ -15,6 +15,7 @@ assert.equal(endpoint.hostname, '127.0.0.1', '此验证脚本只连接本机测�
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'remix-remote-desktop-'));
 const desktopDirectory = path.join(directory, 'desktop');
 fs.mkdirSync(desktopDirectory);
+fs.writeFileSync(path.join(desktopDirectory, 'auth-server-binding.json'), JSON.stringify({ version: 1, url: config.url }));
 app.setPath('userData', desktopDirectory);
 const password = 'Smoke-' + randomUUID();
 let server;

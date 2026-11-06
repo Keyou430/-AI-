@@ -187,3 +187,104 @@ test('U06 插图遵守30页和任务锁，最后一图不可删除', () => {
   useImageTextStore.setState({ taskId: null }); state.removePage('page-two'); state.removePage('page-one');
   assert.equal(useImageTextStore.getState().draft!.pages.length, 1);
 });
+
+test('G09 GLM 整套风格参考图错误停止整套任务，保留原图并允许修改后重试', async () => {
+  let calls = 0; let unsupported = true;
+  installAPI({ generateImageText: async ({ draft, pageId }: any) => {
+    calls++;
+    if (unsupported) return { success: false, errorCode: 'IMAGE_UNSUPPORTED', error: '当前 GLM-Image 接入不支持整套风格参考图' };
+    return { success: true, data: { assetId: 'glm-' + pageId, renderedKey: pageRenderKey(draft, draft.pages.find((page: any) => page.id === pageId)) } };
+  } });
+  const draft = imageTextFixture(); draft.style = '新风格';
+  useImageTextStore.getState().loadDraft(draft); await useImageTextStore.getState().generate();
+  assert.equal(calls, 1); assert.equal(useImageTextStore.getState().taskId, null);
+  assert.equal(useImageTextStore.getState().draft!.pages[0].assetId, 'old-one');
+  assert.equal(useImageTextStore.getState().draft!.pages[1].assetId, 'old-two');
+  assert.match(useImageTextStore.getState().error || '', /GLM-Image/);
+  unsupported = false; await useImageTextStore.getState().generate();
+  assert.equal(calls, 3); assert.equal(affectedPages(useImageTextStore.getState().draft!).length, 0);
+});
+
+test('D01 删除当前中间图片后选择原下一张，连续删除不回到首图并保留剩余内容及版本', () => {
+  installAPI(); const state = useImageTextStore.getState(); const draft = imageTextFixture();
+  draft.pages.push({ id: 'page-three', text: '第三张文字', visual: '第三张画面', referenceIds: [] },
+    { id: 'page-four', text: '第四张文字', visual: '第四张画面', referenceIds: [] });
+  state.loadDraft(draft); state.selectPage('page-two'); state.removePage('page-two');
+  let current = useImageTextStore.getState();
+  assert.equal(current.activePageId, 'page-three');
+  assert.deepEqual(current.draft!.pages, [draft.pages[0], draft.pages[2], draft.pages[3]]);
+  assert.deepEqual(current.draft!.versions, draft.versions);
+  state.removePage('page-three'); current = useImageTextStore.getState();
+  assert.equal(current.activePageId, 'page-four');
+  assert.deepEqual(current.draft!.pages, [draft.pages[0], draft.pages[3]]);
+});
+
+test('D02 删除首图选择下一张，删除末图选择上一张，保留最后一张且生成中禁止删除', () => {
+  installAPI(); const state = useImageTextStore.getState(); const draft = imageTextFixture();
+  draft.pages.push({ id: 'page-three', text: '第三张文字', visual: '第三张画面', referenceIds: [] });
+  state.loadDraft(draft); state.selectPage('page-three');
+  useImageTextStore.setState({ taskId: 'in-flight' }); state.removePage('page-three');
+  assert.equal(useImageTextStore.getState().draft!.pages.length, 3);
+  assert.equal(useImageTextStore.getState().activePageId, 'page-three');
+  useImageTextStore.setState({ taskId: null }); state.removePage('page-three');
+  assert.equal(useImageTextStore.getState().activePageId, 'page-two');
+  state.selectPage('page-one'); state.removePage('page-one');
+  assert.equal(useImageTextStore.getState().activePageId, 'page-two');
+  const only = useImageTextStore.getState().draft; state.removePage('page-two');
+  assert.equal(useImageTextStore.getState().draft, only);
+  assert.equal(useImageTextStore.getState().activePageId, 'page-two');
+});
+
+test('D03 删除其他图片保留当前选中，不存在的图片不改变草稿或选择', () => {
+  installAPI(); const state = useImageTextStore.getState(); const draft = imageTextFixture();
+  draft.pages.push({ id: 'page-three', text: '第三张文字', visual: '第三张画面', referenceIds: [] });
+  state.loadDraft(draft); state.selectPage('page-two');
+  const before = useImageTextStore.getState(); state.removePage('missing-page');
+  assert.equal(useImageTextStore.getState().draft, before.draft);
+  assert.equal(useImageTextStore.getState().activePageId, 'page-two');
+  state.removePage('page-three');
+  assert.equal(useImageTextStore.getState().activePageId, 'page-two');
+  assert.deepEqual(useImageTextStore.getState().draft!.pages, draft.pages.slice(0, 2));
+});
+
+
+test('AUTH-GRACE-11 后端已归档成功图片不再发起重复保存，下一页接续且版本保留', async () => {
+  let saves = 0; const generated: string[] = [];
+  installAPI({ saveImageTextHistory: async () => { saves++; return { success: false, errorCode: 'AUTH_UNAVAILABLE', error: '授权服务暂不可用' }; },
+    generateImageText: async ({ draft, pageId }: any) => {
+      generated.push(pageId);
+      const saved = { ...draft, pages: draft.pages.map((page: any) => page.id === pageId
+        ? { ...page, assetId: 'saved-' + pageId, renderedKey: pageRenderKey(draft, page) } : page) };
+      return { success: true, data: { draft: saved, assetId: 'saved-' + pageId } };
+    } });
+  const draft = imageTextFixture(); draft.style = '本轮新风格'; useImageTextStore.getState().loadDraft(draft);
+  await useImageTextStore.getState().generate();
+  assert.deepEqual(generated, ['page-one', 'page-two']); assert.equal(saves, 0);
+  assert.equal(useImageTextStore.getState().hasUnsavedChanges(), false);
+  assert.deepEqual(useImageTextStore.getState().records[0].pages.map(page => page.assetId), ['saved-page-one', 'saved-page-two']);
+});
+
+test('G11 GLM 单页能力限制继续生成其他页，修改后只重试失败页', async () => {
+  const calls: string[] = []; let unsupported = true;
+  installAPI({ generateImageText: async ({ draft, pageId }: any) => {
+    calls.push(pageId);
+    if (unsupported && pageId === 'page-one') return { success: false, errorCode: 'IMAGE_PAGE_UNSUPPORTED', error: '当前 GLM-Image 接入不支持本页绑定参考图。' };
+    return { success: true, data: { assetId: 'glm-' + pageId, renderedKey: pageRenderKey(draft, draft.pages.find((page: any) => page.id === pageId)) } };
+  } });
+  const draft = imageTextFixture(); draft.style = '新风格';
+  useImageTextStore.getState().loadDraft(draft); await useImageTextStore.getState().generate();
+  const state = useImageTextStore.getState();
+  assert.deepEqual(calls, ['page-one', 'page-two']); assert.equal(state.taskId, null);
+  assert.equal(state.draft!.pages[0].assetId, 'old-one'); assert.match(state.draft!.pages[0].error!, /本页绑定参考图/);
+  assert.equal(state.draft!.pages[1].assetId, 'glm-page-two'); assert.doesNotMatch(state.error!, /已停止后续生图/);
+  unsupported = false; await state.generate();
+  assert.deepEqual(calls, ['page-one', 'page-two', 'page-one']); assert.equal(affectedPages(useImageTextStore.getState().draft!).length, 0);
+});
+test('G12 单页优化失败直接显示参考图来源，不被批量汇总覆盖', async () => {
+  const message = '当前 GLM-Image 接入仅支持文字生图。第 1 张图片包含：本页上一版图片。';
+  installAPI({ generateImageText: async () => ({ success: false, errorCode: 'IMAGE_PAGE_UNSUPPORTED', error: message }) });
+  useImageTextStore.getState().loadDraft(imageTextFixture());
+  await useImageTextStore.getState().generate('page-one', true);
+  const state = useImageTextStore.getState();
+  assert.equal(state.error, message); assert.equal(state.draft!.pages[0].assetId, 'old-one'); assert.equal(state.taskId, null);
+});

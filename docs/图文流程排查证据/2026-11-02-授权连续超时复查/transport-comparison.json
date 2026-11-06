@@ -1,0 +1,151 @@
+{
+  "checkedAt": "2026-11-04T00:43:31.061Z",
+  "type": "read-only comparison, no production token",
+  "nodeVersion": "24.22.0",
+  "electronVersion": "44.9.3",
+  "proxyTypes": [
+    "DIRECT"
+  ],
+  "results": [
+    {
+      "round": 1,
+      "engine": "node",
+      "route": "/health",
+      "status": 200,
+      "durationMs": 216
+    },
+    {
+      "round": 1,
+      "engine": "chromium",
+      "route": "/health",
+      "status": 200,
+      "durationMs": 366
+    },
+    {
+      "round": 2,
+      "engine": "node",
+      "route": "/v1/me",
+      "status": 401,
+      "durationMs": 83
+    },
+    {
+      "round": 2,
+      "engine": "chromium",
+      "route": "/v1/me",
+      "status": 401,
+      "durationMs": 118
+    },
+    {
+      "round": 3,
+      "engine": "node",
+      "route": "/health",
+      "status": 200,
+      "durationMs": 48
+    },
+    {
+      "round": 3,
+      "engine": "chromium",
+      "route": "/health",
+      "status": 200,
+      "durationMs": 102
+    },
+    {
+      "round": 4,
+      "engine": "node",
+      "route": "/v1/me",
+      "status": 401,
+      "durationMs": 36
+    },
+    {
+      "round": 4,
+      "engine": "chromium",
+      "route": "/v1/me",
+      "status": 401,
+      "durationMs": 134
+    },
+    {
+      "round": 5,
+      "engine": "node",
+      "route": "/health",
+      "status": 200,
+      "durationMs": 42
+    },
+    {
+      "round": 5,
+      "engine": "chromium",
+      "route": "/health",
+      "status": 200,
+      "durationMs": 116
+    },
+    {
+      "round": 6,
+      "engine": "node",
+      "route": "/v1/me",
+      "status": 401,
+      "durationMs": 27
+    },
+    {
+      "round": 6,
+      "engine": "chromium",
+      "route": "/v1/me",
+      "status": 401,
+      "durationMs": 135
+    },
+    {
+      "round": 7,
+      "engine": "node",
+      "route": "/health",
+      "status": 200,
+      "durationMs": 58
+    },
+    {
+      "round": 7,
+      "engine": "chromium",
+      "route": "/health",
+      "status": 200,
+      "durationMs": 139
+    },
+    {
+      "round": 8,
+      "engine": "node",
+      "route": "/v1/me",
+      "status": 401,
+      "durationMs": 35
+    },
+    {
+      "round": 8,
+      "engine": "chromium",
+      "route": "/v1/me",
+      "status": 401,
+      "durationMs": 125
+    },
+    {
+      "round": 9,
+      "engine": "node",
+      "route": "/health",
+      "status": 200,
+      "durationMs": 71
+    },
+    {
+      "round": 9,
+      "engine": "chromium",
+      "route": "/health",
+      "status": 200,
+      "durationMs": 123
+    },
+    {
+      "round": 10,
+      "engine": "node",
+      "route": "/v1/me",
+      "status": 401,
+      "durationMs": 105
+    },
+    {
+      "round": 10,
+      "engine": "chromium",
+      "route": "/v1/me",
+      "status": 401,
+      "durationMs": 75
+    }
+  ]
+}

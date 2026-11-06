@@ -274,9 +274,9 @@ export const useAppStore = create<AppState>()(
           const hydratedRecords = records.map((rec) => ({
             ...rec,
             parsedStructure:
-              rec.parsedStructure && rec.parsedStructure.shots
-                ? rec.parsedStructure
-                : parseGeneratedScript(rec.rawGeneratedScript),
+              rec.rawGeneratedScript.trim()
+                ? parseGeneratedScript(rec.rawGeneratedScript)
+                : rec.parsedStructure || parseGeneratedScript(''),
           }));
 
           const { selectedHistoryId } = get();
@@ -333,9 +333,9 @@ export const useAppStore = create<AppState>()(
           editedVisualSummary: record.visualSummary,
           streamingScriptText: record.rawGeneratedScript,
           parsedScript:
-            record.parsedStructure && record.parsedStructure.shots
-              ? record.parsedStructure
-              : parseGeneratedScript(record.rawGeneratedScript),
+            record.rawGeneratedScript.trim()
+              ? parseGeneratedScript(record.rawGeneratedScript)
+              : record.parsedStructure || parseGeneratedScript(''),
           refinementHistory: [...(record.refinementHistory || [])],
           conversationMessages: [...(record.conversationMessages || [])],
           parseError: null,

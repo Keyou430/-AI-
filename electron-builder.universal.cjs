@@ -3,7 +3,7 @@ module.exports = {
   ...build,
   files: [...build.files, '!dist-electron/services/authService.js', '!dist-electron/services/authService.js.map'],
   extraMetadata: { authMode: 'remote' },
-  nsis: { ...build.nsis, artifactName: 'video-remix-universal-setup-${version}.exe' },
+  nsis: { ...build.nsis, include: 'installer/authServerBinding.nsh', artifactName: 'video-remix-universal-setup-${version}.exe' },
   electronFuses: {
     runAsNode: false,
     enableNodeOptionsEnvironmentVariable: false,

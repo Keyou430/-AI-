@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import fs from 'node:fs';
+import path from 'node:path';
+import { parseGeneratedScript } from '../src/lib/scriptParser';
 
 import { exportScriptFileClient, parseVideoLinkClient, streamGenerateScriptClient } from '../src/services/ipcClient';
 
@@ -253,4 +256,27 @@ test('历史页视频刷新完成后保留已选图文，避免异步覆盖', as
   await loading;
   assert.equal(useAppStore.getState().selectedHistoryId, 'image-entry');
   useAppStore.setState({ activeNav: 'workbench' });
+});
+
+
+test('历史列表与工作台按原文重解析中文分镜，空缓存和不完整缓存均可恢复且不改写记录', async () => {
+  const raw = fs.readFileSync(path.join(__dirname, 'fixtures/chineseStoryboard.txt'), 'utf8');
+  for (const incomplete of [false, true]) {
+    const old = { ...historyRecord('chinese-history'), platform: 'xiaohongshu' as const, durationSec: 152, rawGeneratedScript: raw,
+      parsedStructure: parseGeneratedScript(incomplete ? raw.slice(raw.indexOf('【镜头一'), raw.indexOf('【镜头二')) : '') };
+    const before = structuredClone(old); let writes = 0;
+    Object.assign(globalThis, { window: { electronAPI: {
+      listHistoryFromDB: async () => ({ success: true, records: [old] }),
+      getDatabaseInfo: async () => ({ success: true, info: { engine: 'sqlite3-wasm', dbPath: 'test', totalCount: 1, dbSizeBytes: 0 } }),
+      saveHistoryToDB: async () => { writes++; return { success: true }; },
+    } } });
+    await useAppStore.getState().loadHistoryFromSQLite();
+    const restored = useAppStore.getState().historyRecords[0].parsedStructure;
+    assert.equal(restored.shots.length, 9); assert.equal(restored.totalDurationSec, 152);
+    assert.ok(restored.voiceoverFullText.includes('今天讲三个坑'));
+    useAppStore.getState().loadHistoryToWorkbench(old);
+    assert.equal(useAppStore.getState().parsedScript?.shots.length, 9);
+    assert.equal(useAppStore.getState().streamingScriptText, raw);
+    assert.deepEqual(old, before); assert.equal(writes, 0);
+  }
 });

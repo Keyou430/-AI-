@@ -54,8 +54,8 @@ test('跨客户端停用撤销所有会话，重新启用不会恢复旧凭据�
     await assert.rejects(admin.setActive(1, root.id, false), { code: 'PROTECTED_ACCOUNT' });
     await admin.setActive(1, user.id, false);
     await admin.setActive(1, user.id, true);
-    await assert.rejects(one.requireUser(2), { code: 'AUTH_REQUIRED' });
-    await assert.rejects(two.requireUser(3), { code: 'AUTH_REQUIRED' });
+    await assert.rejects(one.requireUser(2), { code: 'ACCOUNT_DISABLED' });
+    await assert.rejects(two.requireUser(3), { code: 'ACCOUNT_DISABLED' });
     assert.equal((await f.api('/v1/me', undefined, raw.data.token)).status, 401);
     await one.login(2, 'employee', memberPassword);
     await admin.setActive(1, user.id, false);
