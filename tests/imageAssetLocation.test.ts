@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import fs from 'node:fs/promises';
+import { realpathSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { ImageAssetLocationService } from '../electron/services/imageAssetLocation';
@@ -30,7 +31,7 @@ test('素材迁移目标被占用时保持原地址；独立素材不随数据�
     await db.ensureInitialized();db.close();const service=new ImageAssetLocationService(root);await new ImageTextAssets(data).save(pngBytes);
     service.schedule(target,data);await new ImageTextAssets(target).save(pngBytes);service.activatePending(data);
     assert.equal(service.root(data),data);assert.match(service.get(data).migrationError!,/已有/);
-    const storage=new StorageLocationService(data,false);storage.schedule(newData);assert.equal(storage.activatePending(),await fs.realpath(newData));
+    const storage=new StorageLocationService(data,false);storage.schedule(newData);assert.equal(storage.activatePending(),realpathSync(newData));
     assert.equal((await fs.readdir(data)).includes('image-text-assets'),true);assert.equal((await fs.readdir(newData)).includes('image-text-assets'),false);
   }finally{db.close();assert.equal(path.dirname(root),os.tmpdir());await fs.rm(root,{recursive:true,force:true});}
 });

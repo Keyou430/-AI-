@@ -1,3 +1,4 @@
+import { PLATFORM_LABELS, TRENDING_PLATFORMS, type TrendingPlatform } from '../../electron/services/trendingTypes';
 import { useEffect, useRef, useState } from 'react';
 import { Menu } from '@base-ui/react/menu';
 import {
@@ -29,7 +30,7 @@ interface HistoryListItem {
   id: string;
   title: string;
   createdAt: string;
-  platform: 'douyin' | 'xiaohongshu';
+  platform: TrendingPlatform;
   kind: 'video' | 'image-text';
   video?: HistoryRecord;
   image?: ImageTextDraft;
@@ -177,7 +178,7 @@ export function HistoryView() {
           <details className="relative text-xs text-muted-foreground">
             <summary className="cursor-pointer p-2">存储信息</summary>
             <div className="absolute right-0 top-full z-10 mt-2 w-64 space-y-3 rounded-md border bg-popover p-4 shadow-sm">
-              <p>本设备已保存 {dbStatusInfo?.totalCount ?? historyRecords.length} 条记录。</p>
+              <p>{dbStatusInfo ? `本设备已保存 ${dbStatusInfo.totalCount} 条记录。` : '记录总数暂不可用，请刷新重试。'}</p>
               {dbStatusInfo?.engine !== 'browser-local' && (
                 <Button
                   size="sm"
@@ -215,8 +216,8 @@ export function HistoryView() {
               {(['all', 'video', 'image-text'] as const).map(value => <Button key={value} size="sm" variant={contentFilter === value ? 'secondary' : 'ghost'}
                 aria-pressed={contentFilter === value} onClick={() => setContentFilter(value)}>{value === 'all' ? '全部内容' : value === 'video' ? '视频' : '图文'}</Button>)}
             </div>
-            <div className="flex gap-1" aria-label="平台筛选">
-              {(['all', 'douyin', 'xiaohongshu'] as const).map((value) => (
+            <div className="flex flex-wrap gap-1" aria-label="平台筛选">
+              {(['all', ...TRENDING_PLATFORMS] as const).map((value) => (
                 <Button
                   key={value}
                   size="sm"
@@ -224,7 +225,7 @@ export function HistoryView() {
                   aria-pressed={historyFilterPlatform === value}
                   onClick={() => setHistoryFilterPlatform(value)}
                 >
-                  {value === 'all' ? '全部' : value === 'douyin' ? '抖音' : '小红书'}
+                  {value === 'all' ? '全部' : PLATFORM_LABELS[value]}
                 </Button>
               ))}
             </div>
@@ -273,7 +274,7 @@ export function HistoryView() {
                       {record.video?.parsedStructure?.voiceoverFullText || record.video?.rawGeneratedScript || record.image?.body}
                     </p>
                     <p className="mt-3 text-[11px] tabular-nums text-muted-foreground">
-                      {record.platform === 'douyin' ? '抖音' : '小红书'} ·{' '}
+                      {PLATFORM_LABELS[record.platform]}{(record.video?.sourceContent?.sourceHotspot || record.image?.source.sourceHotspot) ? '热点' : ''} ·{' '}
                       {formatDateTime(record.createdAt)} · {record.image ? record.image.pages.length + ' 张图文' : (record.video?.durationSec || 0) + ' 秒视频'}
                     </p>
                   </button>
@@ -311,7 +312,7 @@ export function HistoryView() {
               <Button size="sm" variant="ghost" aria-label="返回列表" className="-ml-2 lg:hidden" onClick={() => setShowDetail(false)}><ArrowLeft /></Button>
               <div className="min-w-0 flex-1">
                 <h2 className="truncate text-sm font-semibold" title={selectedImage.title}>{selectedImage.title}</h2>
-                <p className="muted-copy">{formatDateTime(selectedImage.createdAt)} · 小红书 · {selectedImage.pages.length} 张</p>
+                <p className="muted-copy">{formatDateTime(selectedImage.createdAt)} · {PLATFORM_LABELS[selectedImage.source.platform]}{selectedImage.source.sourceHotspot ? '热点' : ''} · {selectedImage.pages.length} 张</p>
               </div>
               <div className="flex flex-wrap gap-1">
                 <Button size="sm" onClick={() => openImage(selectedImage)}><Edit3 />重新编辑</Button>
@@ -329,7 +330,7 @@ export function HistoryView() {
                 <Button size="sm" variant="ghost" aria-label="返回列表" className="-ml-2 lg:hidden" onClick={() => setShowDetail(false)}><ArrowLeft /></Button>
                 <div className="min-w-0 flex-1">
                   <h2 className="truncate text-sm font-semibold" title={selectedRecord.title}>{selectedRecord.title}</h2>
-                  <p className="muted-copy">{formatDateTime(selectedRecord.createdAt)} · {selectedRecord.platform === 'douyin' ? '抖音' : '小红书'}{selectedRecord.durationSec > 0 && ' · ' + selectedRecord.durationSec + ' 秒'}</p>
+                  <p className="muted-copy">{formatDateTime(selectedRecord.createdAt)} · {PLATFORM_LABELS[selectedRecord.platform]}{selectedRecord.sourceContent?.sourceHotspot ? '热点' : ''}{selectedRecord.durationSec > 0 && ' · ' + selectedRecord.durationSec + ' 秒'}</p>
                 </div>
                 <div className="flex flex-wrap gap-1">
                   <Button size="sm" onClick={() => loadHistoryToWorkbench(selectedRecord)}><Edit3 />重新编辑</Button>

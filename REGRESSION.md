@@ -382,4 +382,4 @@ rg -n 'removePage|删除当前图|activePageId|saveImageTextHistory' src/store/u
 
 变更：新安装在 NSIS 向导填写并验证 HTTPS 根地址，检查健康和未登录授权协议；确认后固化本机绑定。覆盖升级保留绑定和 API 设置，主动卸载清除绑定、加密 API 配置及清理进度，不删除业务资料。旧固定地址升级沿用构建时兼容地址。首次静默安装拒绝跳过绑定，缺失或损坏的绑定拒绝启动。
 
-验证：类型检查通过；完整测试 258/258 通过，含 PowerShell 12 场景；独立临时目录执行实际 NSIS 钩子 6 场景通过；computer-use 可访问性树验证地址页面、HTTP 拦截、HTTPS 接口校验及确认绑定落盘。截图捕获超时后改用可访问性树；界面验收完成后用户以 Esc 停止电脑操作。正式 ASAR 桌面验收及 API 设置 33 场景通过，18 次供应商请求均为隔离模拟响应。安装包构建成功，大小和 SHA-256 见 release/universal-package-acceptance-1.0.27.json。未升级本机生产客户端，未修改线上服务。
+验证：类型检查通过；完整测试 258/258 通过，含 PowerShell 12 场景；独立临时目录执行实际 NSIS 钩子 6 场景通过；computer-use 可访问性树验证地址页面、HTTP 拦截、HTTPS 接口校验及确认绑定落盘。截图捕获超时后改用可访问性树；界面验收完成后用户以 Esc 停止电脑操作。正式 ASAR 桌面验收及 API 设置 33 场景通过，18 次供应商请求均为隔离模拟响应。安装包构建成功，大小和 SHA-256 见 ../../1.0.27/release/universal-package-acceptance-1.0.27.json。未升级本机生产客户端，未修改线上服务。

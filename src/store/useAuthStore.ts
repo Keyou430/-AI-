@@ -1,3 +1,4 @@
+import { useTrendingStore } from './useTrendingStore';
 import { create } from 'zustand';
 import { useImageTextStore } from './useImageTextStore';
 import { useAppStore } from './useAppStore';
@@ -50,7 +51,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
   signOut: async () => {
     try { await window.electronAPI?.logout(); }
-    finally { useImageTextStore.getState().reset(); useAppStore.getState().updateSettings({ llmApiKey: '', videoParserApiKey: '' }); set({ user: null, error: null }); }
+    finally { useTrendingStore.getState().resetSession(); useImageTextStore.getState().reset(); useAppStore.getState().updateSettings({ llmApiKey: '', videoParserApiKey: '' }); set({ user: null, error: null }); }
   },
-  invalidate: (message) => { useImageTextStore.getState().reset(); useAppStore.getState().updateSettings({ llmApiKey: '', videoParserApiKey: '' }); set({ user: null, error: message }); },
+  invalidate: (message) => { useTrendingStore.getState().resetSession(); useImageTextStore.getState().reset(); useAppStore.getState().updateSettings({ llmApiKey: '', videoParserApiKey: '' }); set({ user: null, error: message }); },
 }));

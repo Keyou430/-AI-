@@ -1,3 +1,4 @@
+import { PLATFORM_LABELS } from '../../electron/services/trendingTypes';
 import { useState, useMemo, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
@@ -229,6 +230,7 @@ export const WorkbenchView: React.FC = () => {
 
       const completedScript = genRes.fullText || finalFullText;
       if (!completedScript.trim()) throw new Error('模型未返回有效脚本，请重试。');
+      if (params.videoInfo.sourceHotspot && /^关联不足[：:]/.test(completedScript.trim())) throw new Error(completedScript.trim());
       const nextConversation = [
         ...historyTurns,
         { role: 'user' as const, content: userPrompt },
@@ -518,9 +520,7 @@ export const WorkbenchView: React.FC = () => {
               {isManuallyEdited
                 ? '已编辑'
                 : parsedVideo
-                  ? parsedVideo.platform === 'douyin'
-                    ? '抖音'
-                    : '小红书'
+                  ? PLATFORM_LABELS[parsedVideo.platform] + (parsedVideo.sourceHotspot ? '热点话题' : '')
                   : '粘贴链接或直接输入'}
             </span>
           </div>
@@ -538,7 +538,7 @@ export const WorkbenchView: React.FC = () => {
                     {parsedVideo.title}
                   </h3>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {parsedVideo.author}
+                    {parsedVideo.author}{parsedVideo.sourceHotspot ? ' · 热点话题，尚未提取原帖' : ''}
                     {parsedVideo.durationSec > 0 && ' · ' + parsedVideo.durationSec + ' 秒'}
                   </p>
                 </div>

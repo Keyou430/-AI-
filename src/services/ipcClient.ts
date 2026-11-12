@@ -1,3 +1,4 @@
+import type { HotspotFetchResult, HotspotItem, IndustryProfile, PlatformType } from '../../electron/services/trendingTypes';
 import type { ImageTextAPI } from '../../electron/services/imageTextTypes';
 import type { StorageLocation } from '../../electron/services/storageLocation';
 import type { ProviderModuleInput, ProviderTestResult, ProviderSettings, ProviderSettingsInput } from '../../electron/services/providerTypes';
@@ -54,7 +55,7 @@ declare global {
       // Phase 2 SQLite 历史记录
       listHistoryFromDB: (filter?: {
         search?: string;
-        platform?: 'all' | 'douyin' | 'xiaohongshu';
+        platform?: PlatformType;
       }) => Promise<{ success: boolean; records: HistoryRecord[] }>;
       saveHistoryToDB: (
         record: HistoryRecord
@@ -86,6 +87,12 @@ declare global {
         enabled: boolean;
       }) => Promise<{ success: boolean }>;
       deleteKnowledgeDocFromDB: (id: string) => Promise<{ success: boolean }>;
+
+      // 行业热点与 AI 选题分析
+      fetchHotspots: (payload?: { platform?: PlatformType; force?: boolean }) => Promise<{ success: boolean; error?: string; errorCode?: string } & Partial<HotspotFetchResult>>;
+      analyzeProfileWithLLM: (payload: { docSnippets: string[]; keywords: string[] }) => Promise<{ success: boolean; profile?: IndustryProfile; error?: string; errorCode?: string }>;
+      rankHotspotsWithLLM: (payload: { profile: IndustryProfile; candidates: HotspotItem[] }) => Promise<{ success: boolean; ranked?: HotspotItem[]; error?: string; errorCode?: string }>;
+      openExternal: (url: string) => Promise<{ success: boolean; error?: string }>;
 
       onStreamChunk: (
         cb: (data: { requestId: string; chunk: string }) => void
@@ -144,7 +151,7 @@ function setBrowserFallbackKnowledgeDocs(docs: KnowledgeDocument[]): void {
 // ============================================================================
 export async function fetchHistoryRecordsFromSQLite(filter?: {
   search?: string;
-  platform?: 'all' | 'douyin' | 'xiaohongshu';
+  platform?: PlatformType;
 }): Promise<HistoryRecord[]> {
   if (window.electronAPI?.listHistoryFromDB) {
     const res = await window.electronAPI.listHistoryFromDB(filter);
@@ -204,7 +211,8 @@ export async function deleteHistoryRecordFromSQLite(id: string): Promise<boolean
 export async function fetchSQLiteDatabaseInfo(): Promise<DatabaseStatusInfo> {
   if (window.electronAPI?.getDatabaseInfo) {
     const res = await window.electronAPI.getDatabaseInfo();
-    if (res?.info) return res.info;
+    if (res?.success && res.info) return res.info;
+    throw new Error('读取本地数据库统计失败，请刷新重试。');
   }
 
   const records = getBrowserFallbackRecords();
@@ -465,4 +473,47 @@ export async function exportScriptFileClient(
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
   return true;
+}
+
+function requireTrendingSuccess(result: { success: boolean; error?: string; errorCode?: string }): void {
+  if (!result.success) {
+    const error = new Error(result.error || '热点服务请求失败，请重试。');
+    error.name = result.errorCode || 'Error';
+    throw error;
+  }
+}
+export async function fetchHotspotsClient(payload?: { platform?: PlatformType; force?: boolean }): Promise<HotspotFetchResult> {
+  if (!window.electronAPI?.fetchHotspots) throw new Error('请使用桌面客户端获取热点。');
+  const result = await window.electronAPI.fetchHotspots(payload);
+  requireTrendingSuccess(result);
+  if (!Array.isArray(result.hotspots) || !Array.isArray(result.sources)) throw new Error('热点服务未返回有效数据。');
+  return { hotspots: result.hotspots, sources: result.sources };
+}
+export async function analyzeProfileWithLLMClient(payload: { docSnippets: string[]; keywords: string[] }): Promise<IndustryProfile> {
+  if (!window.electronAPI?.analyzeProfileWithLLM) throw new Error('模型接口未配置。');
+  const result = await window.electronAPI.analyzeProfileWithLLM(payload);
+  requireTrendingSuccess(result);
+  if (!result.profile) throw new Error('模型未返回行业画像。');
+  return result.profile;
+}
+export async function rankHotspotsWithLLMClient(payload: { profile: IndustryProfile; candidates: HotspotItem[] }): Promise<HotspotItem[]> {
+  if (!window.electronAPI?.rankHotspotsWithLLM) throw new Error('模型接口未配置。');
+  const result = await window.electronAPI.rankHotspotsWithLLM(payload);
+  requireTrendingSuccess(result);
+  if (!Array.isArray(result.ranked)) throw new Error('模型未返回热点评分。');
+  return result.ranked;
+}
+
+export async function openExternalClient(url: string): Promise<boolean> {
+  if (!url || typeof url !== 'string') return false;
+  if (window.electronAPI?.openExternal) {
+    const res = await window.electronAPI.openExternal(url);
+    return Boolean(res?.success);
+  }
+  try {
+    window.open(url, '_blank');
+    return true;
+  } catch {
+    return false;
+  }
 }

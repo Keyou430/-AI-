@@ -10,6 +10,7 @@ if (!process.versions.electron) {
   const root = path.resolve(process.argv.slice(2).find(value => !value.startsWith('--')) || path.join(__dirname, '..'));
   try {
     const remote = process.argv.includes('--remote');
+    if (remote) assert.ok(process.env.REMIX_AUTH_URL, '远程验收需显式指定 REMIX_AUTH_URL');
     const password = remote ? fs.readFileSync(process.env.REMIX_SMOKE_ADMIN_FILE, 'utf8').split(/\r?\n/)
       .find(line => line.startsWith('初始密码：'))?.slice('初始密码：'.length).trim() : 'Test-' + randomUUID();
     assert.ok(password);
@@ -61,7 +62,7 @@ if (!process.versions.electron) {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (input, init) => {
     const address = new URL(typeof input === 'string' ? input : input.url || input);
-    if (address.hostname === '114.132.186.95') {
+    if (remote && address.origin === new URL(process.env.REMIX_AUTH_URL).origin) {
       assert.ok(['/v1/login', '/v1/me', '/v1/logout', '/v1/users', '/v1/users/create', '/v1/users/status', '/v1/users/password'].includes(address.pathname));
       for (const secret of [key, updatedKey, videoKey]) assert.equal(String(init?.body || '').includes(secret), false);
     }

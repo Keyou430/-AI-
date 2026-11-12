@@ -10,6 +10,7 @@ import {
   KnowledgeDocument,
   ParsedScriptStructure,
   ParsedVideoInfo,
+  PlatformType,
   RefinementVersion,
 } from '../types';
 import { parseGeneratedScript } from '../lib/scriptParser';
@@ -39,6 +40,9 @@ function discardStoredWorkbench(stored: any) {
   delete retained.editedVisualSummary;
   return retained;
 }
+
+let historyLoadRequest = 0;
+let databaseInfoRequest = 0;
 
 type SettingsTab = 'content' | 'system';
 
@@ -98,12 +102,13 @@ interface AppState {
   isLoadingHistory: boolean;
   selectedHistoryId: string | null;
   dbStatusInfo: DatabaseStatusInfo | null;
-  historyFilterPlatform: 'all' | 'douyin' | 'xiaohongshu';
+  historyFilterPlatform: PlatformType;
   historySearchQuery: string;
   setSelectedHistoryId: (id: string | null) => void;
-  setHistoryFilterPlatform: (platform: 'all' | 'douyin' | 'xiaohongshu') => void;
+  setHistoryFilterPlatform: (platform: PlatformType) => void;
   setHistorySearchQuery: (q: string) => void;
   loadHistoryFromSQLite: () => Promise<void>;
+  refreshDatabaseInfo: () => Promise<void>;
   saveGeneratedHistory: (record: HistoryRecord, workbenchRevision: number) => Promise<void>;
   deleteHistoryRecord: (id: string) => Promise<void>;
   loadHistoryToWorkbench: (record: HistoryRecord) => void;
@@ -137,7 +142,7 @@ export const useAppStore = create<AppState>()(
           ...(tab === 'history' ? { selectedHistoryId: null, historyFilterPlatform: 'all', historySearchQuery: '' } : {}) });
         if (tab === 'history') {
           get().loadHistoryFromSQLite();
-        } else if (tab === 'settings') {
+        } else if (tab === 'settings' || tab === 'trending') {
           get().loadKnowledgeDocsFromSQLite();
         }
       },
@@ -259,18 +264,30 @@ export const useAppStore = create<AppState>()(
         get().loadHistoryFromSQLite();
       },
 
+      refreshDatabaseInfo: async () => {
+        const request = ++databaseInfoRequest;
+        try {
+          const info = await fetchSQLiteDatabaseInfo();
+          if (request === databaseInfoRequest) set({ dbStatusInfo: info });
+        } catch {
+          if (request === databaseInfoRequest) set({ dbStatusInfo: null });
+        }
+      },
+
       loadHistoryFromSQLite: async () => {
+        const request = ++historyLoadRequest;
         set({ isLoadingHistory: true });
         try {
           const { historySearchQuery, historyFilterPlatform } = get();
-          const [records, dbInfo] = await Promise.all([
+          const [records] = await Promise.all([
             fetchHistoryRecordsFromSQLite({
               search: historySearchQuery,
               platform: historyFilterPlatform,
             }),
-            fetchSQLiteDatabaseInfo(),
+            get().refreshDatabaseInfo(),
           ]);
 
+          if (request !== historyLoadRequest) return;
           const hydratedRecords = records.map((rec) => ({
             ...rec,
             parsedStructure:
@@ -289,11 +306,10 @@ export const useAppStore = create<AppState>()(
           set({
             historyRecords: hydratedRecords,
             selectedHistoryId: nextSelected,
-            dbStatusInfo: dbInfo,
             isLoadingHistory: false,
           });
         } catch {
-          set({ isLoadingHistory: false });
+          if (request === historyLoadRequest) set({ isLoadingHistory: false });
         }
       },
 
@@ -346,8 +362,8 @@ export const useAppStore = create<AppState>()(
       knowledgeDocs: [],
       loadKnowledgeDocsFromSQLite: async () => {
         const docs = await fetchKnowledgeDocsClient();
-        const dbInfo = await fetchSQLiteDatabaseInfo();
-        set({ knowledgeDocs: docs, dbStatusInfo: dbInfo });
+        set({ knowledgeDocs: docs });
+        await get().refreshDatabaseInfo();
       },
       addKnowledgeDocToState: (doc) =>
         set((state) => ({

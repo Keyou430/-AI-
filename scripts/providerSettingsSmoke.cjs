@@ -568,7 +568,8 @@ async function start() {
     const { createAuthServer } = require(path.join(sourceRoot, 'dist-server/server/authServer.js'));
     testAuthServer = await createAuthServer({ dataDirectory: path.join(dataDirectory, 'auth-fixture'), adminPassword: password });
     await new Promise(resolve => testAuthServer.listen(0, '127.0.0.1', resolve));
-    authOrigin = new URL(JSON.parse(fs.readFileSync(path.join(applicationPath, 'dist-electron/auth-config.json'), 'utf8')).url).origin;
+    const config = JSON.parse(fs.readFileSync(path.join(applicationPath, 'dist-electron/auth-config.json'), 'utf8'));
+    authOrigin = new URL(config.binding === 'installation' ? 'https://auth.smoke.test' : config.url).origin;
     fs.writeFileSync(path.join(dataDirectory, 'auth-server-binding.json'), JSON.stringify({ version: 1, url: authOrigin }));
     fixtureAuthOrigin = 'http://127.0.0.1:' + testAuthServer.address().port;
   }

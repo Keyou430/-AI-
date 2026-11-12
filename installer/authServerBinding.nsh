@@ -15,18 +15,10 @@ Var authAppData
 Var authServerDialog
 Var authServerInput
 Var authServerUrl
-Var authPreviousInstall
 
 !macro customInit
   !insertmacro extractAuthHelper
-  File /oname=$PLUGINSDIR\legacy-auth-config.json "${PROJECT_DIR}\dist-electron\auth-config.json"
-  StrCpy $authPreviousInstall "0"
-  ${If} $hasPerUserInstallation == "1"
-  ${OrIf} $hasPerMachineInstallation == "1"
-    StrCpy $authPreviousInstall "1"
-  ${EndIf}
   ${If} ${Silent}
-  ${AndIf} $authPreviousInstall != "1"
     IfFileExists "${AUTH_DATA_DIRECTORY}\auth-server-binding.json" authSilentReady
     SetErrorLevel 1
     Quit
@@ -41,9 +33,6 @@ Var authPreviousInstall
 Function AuthServerPage
   IfFileExists "${AUTH_DATA_DIRECTORY}\auth-server-binding.json" 0 +2
     Abort
-  ${If} $authPreviousInstall == "1"
-    Abort
-  ${EndIf}
   !insertmacro MUI_HEADER_TEXT "绑定授权服务器" "首次安装时填写，绑定成功后不可修改"
   nsDialogs::Create 1018
   Pop $authServerDialog
@@ -81,11 +70,7 @@ Function AuthServerLeave
 FunctionEnd
 
 !macro customInstall
-  StrCpy $2 ""
-  ${If} $authPreviousInstall == "1"
-    StrCpy $2 '-LegacyConfig "$PLUGINSDIR\legacy-auth-config.json"'
-  ${EndIf}
-  nsExec::ExecToStack /TIMEOUT=15000 '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "$PLUGINSDIR\authServerBinding.ps1" -Action Install -DataDirectory "${AUTH_DATA_DIRECTORY}" -UrlFile "$PLUGINSDIR\auth-server-url.txt.validated" $2'
+  nsExec::ExecToStack /TIMEOUT=15000 '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "$PLUGINSDIR\authServerBinding.ps1" -Action Install -DataDirectory "${AUTH_DATA_DIRECTORY}" -UrlFile "$PLUGINSDIR\auth-server-url.txt.validated"'
   Pop $0
   Pop $1
   ${If} $0 != "0"

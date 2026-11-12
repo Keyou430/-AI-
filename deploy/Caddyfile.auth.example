@@ -1,9 +1,10 @@
+# 示例配置：部署前替换为自己的授权地址。
 # 合并到现有 Caddyfile；保留原有站点与全局选项。
 {
-    default_sni 114.132.186.95
+    default_sni auth.example.com
 }
 
-https://114.132.186.95 {
+https://auth.example.com {
     tls {
         issuer acme {
             dir https://acme-v02.api.letsencrypt.org/directory

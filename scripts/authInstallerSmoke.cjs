@@ -63,10 +63,13 @@ async function main() {
     const compiler = await getMakeNsisPath();
     await run(compiler.path, ['/V2', '/WX', input], { timeout: 60000, env: { ...process.env, ...compiler.env } });
     await assert.rejects(run(installer, ['/S'], { timeout: 15000 }), error => error.code === 1);
+    await assert.rejects(run(installer, ['/S', '/UPGRADE'], { timeout: 15000 }), error => error.code === 1);
+    await fs.mkdir(device);
+    await fs.writeFile(path.join(device, 'auth-server-binding.json'), JSON.stringify({ version: 1, url: 'https://auth.example.com' }));
     await run(installer, ['/S', '/UPGRADE'], { timeout: 20000 });
     const bindingFile = path.join(device, 'auth-server-binding.json');
     const initial = await fs.readFile(bindingFile, 'utf8');
-    assert.equal(JSON.parse(initial).url, JSON.parse(await fs.readFile('dist-electron/auth-config.json', 'utf8')).url);
+    assert.equal(JSON.parse(initial).url, 'https://auth.example.com');
     const apiFile = path.join(device, 'providers.encrypted');
     await fs.writeFile(apiFile, 'ISOLATED_API_FIXTURE');
     await fs.writeFile(path.join(device, 'business.keep'), 'ISOLATED_BUSINESS_FIXTURE');
@@ -80,7 +83,7 @@ async function main() {
     await assert.rejects(fs.access(bindingFile), { code: 'ENOENT' });
     await assert.rejects(fs.access(apiFile), { code: 'ENOENT' });
     assert.equal(await fs.readFile(path.join(device, 'business.keep'), 'utf8'), 'ISOLATED_BUSINESS_FIXTURE');
-    console.log(JSON.stringify({ success: true, cases: 6, directory, installer, uninstaller, device }));
+    console.log(JSON.stringify({ success: true, cases: 7, directory, installer, uninstaller, device }));
   } finally {
     if (!process.argv.includes('--keep')) await fs.rm(directory, { recursive: true, force: true });
   }

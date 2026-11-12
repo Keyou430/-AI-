@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { PlatformType } from './services/trendingTypes';
 import type { ImageTextDraft } from './services/imageTextTypes';
 
 export interface StreamChunkEvent {
@@ -65,7 +66,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   exportImageText: (draft: any, forbiddenWords: string[] = []) => ipcRenderer.invoke('image-text:export', { draft, forbiddenWords }),
 
   // Phase 2: SQLite 本地历史记录接口
-  listHistoryFromDB: (filter?: { search?: string; platform?: 'all' | 'douyin' | 'xiaohongshu' }) =>
+  listHistoryFromDB: (filter?: { search?: string; platform?: PlatformType }) =>
     ipcRenderer.invoke('db:history:list', filter),
   saveHistoryToDB: (record: any) => ipcRenderer.invoke('db:history:save', record),
   deleteHistoryFromDB: (id: string) => ipcRenderer.invoke('db:history:delete', id),
@@ -80,6 +81,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   toggleKnowledgeDocInDB: (payload: { id: string; enabled: boolean }) =>
     ipcRenderer.invoke('kb:toggle', payload),
   deleteKnowledgeDocFromDB: (id: string) => ipcRenderer.invoke('kb:delete', id),
+
+  // 行业热点与 AI 选题分析
+  fetchHotspots: (payload?: { platform?: PlatformType; force?: boolean }) =>
+    ipcRenderer.invoke('trending:fetch', payload),
+  analyzeProfileWithLLM: (payload: { docSnippets: string[]; keywords: string[] }) =>
+    ipcRenderer.invoke('trending:analyze-profile', payload),
+  rankHotspotsWithLLM: (payload: { profile: any; candidates: any[] }) =>
+    ipcRenderer.invoke('trending:rank', payload),
+  openExternal: (url: string) => ipcRenderer.invoke('system:open-external', url),
 
   // 流式事件监听
   onStreamChunk: (callback: (data: StreamChunkEvent) => void) => {

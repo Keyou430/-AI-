@@ -1,3 +1,4 @@
+import type { HotspotSource, TrendingPlatform } from './trendingTypes';
 import { userFacingError } from './userFacingError';
 import { extractUrlAndPlatform } from './videoLink';
 import { readLinkDigest, type LinkDigestDetails } from './linkDigestProvider';
@@ -22,7 +23,8 @@ export interface VideoParseRequest {
 }
 
 export interface ParsedVideoData {
-  platform: VideoPlatform;
+  sourceHotspot?: HotspotSource;
+  platform: VideoPlatform | TrendingPlatform;
   extractedUrl: string;
   title: string;
   author: string;

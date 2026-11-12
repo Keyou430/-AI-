@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import fs from 'node:fs/promises';
+import { realpathSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { LocalSQLiteManager } from '../electron/db/sqliteService';
 import { StorageLocationService } from '../electron/services/storageLocation';
 import { ImageTextAssets, IMAGE_ASSET_DIRECTORY } from '../electron/services/imageTextAssets';
 import { LocalProviderService } from '../electron/services/localProviderService';
+import { DEFAULT_PROFILES } from '../src/services/trendingService';
 import { imageTextFixture, pngBytes } from './helpers/imageTextFixture';
 
 test('图文与视频独立持久化，重启迁移后图片、逐页素材及历史均可读取', async () => {
@@ -16,6 +18,7 @@ test('图文与视频独立持久化，重启迁移后图片、逐页素材及�
   let db = new LocalSQLiteManager(original);
   try {
     const draft = imageTextFixture(); const assets = new ImageTextAssets(original);
+    draft.remixContext = { industryProfile: structuredClone(DEFAULT_PROFILES.new_energy), companyBusinessProfile: '出行规划服务', keywords: [{ text: '续航', category: 'jargon' }] };
     const id = await assets.save(pngBytes); draft.pages[0].assetId = id;
     draft.references = [{ id, kind: 'scene', name: '实际场景', width: 1, height: 1 }]; draft.pages[0].referenceIds = [id];
     const archived = await assets.save(pngBytes);
@@ -24,7 +27,7 @@ test('图文与视频独立持久化，重启迁移后图片、逐页素材及�
     assert.equal((await db.listRecords()).length, 0); assert.equal((await db.getDatabaseInfo()).totalCount, 1);
     db.close();
     const location = new StorageLocationService(original); location.schedule(target);
-    assert.equal(location.activatePending(), await fs.realpath(target));
+    assert.equal(location.activatePending(), realpathSync(target));
     assert.deepEqual(await new ImageTextAssets(target).read(id), pngBytes);
     assert.deepEqual(await new ImageTextAssets(target).read(archived), pngBytes);
     assert.deepEqual(await assets.read(id), pngBytes);

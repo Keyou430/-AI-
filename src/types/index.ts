@@ -1,11 +1,17 @@
 import type { LinkDigestDetails } from '../../electron/services/linkDigestProvider';
 
-export type VideoPlatform = 'douyin' | 'xiaohongshu';
+import type { HotspotSource, TrendingPlatform } from '../../electron/services/trendingTypes';
 
-export type ActiveNavTab = 'workbench' | 'image-text' | 'history' | 'settings' | 'accounts';
+export type VideoPlatform = 'douyin' | 'xiaohongshu';
+export type ContentPlatform = VideoPlatform | TrendingPlatform;
+
+export type ActiveNavTab = 'workbench' | 'image-text' | 'trending' | 'history' | 'settings' | 'accounts';
+
+export * from './trending';
 
 export interface ParsedVideoInfo {
-  platform: VideoPlatform;
+  sourceHotspot?: HotspotSource;
+  platform: ContentPlatform;
   extractedUrl: string;
   title: string;
   author: string;
@@ -93,7 +99,7 @@ export interface ConversationTurn {
 
 export interface HistoryRecord {
   id: string;
-  platform: VideoPlatform;
+  platform: ContentPlatform;
   sourceUrl: string;
   title: string;
   createdAt: string;

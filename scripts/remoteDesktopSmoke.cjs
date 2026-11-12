@@ -10,12 +10,12 @@ const { createAuthServer } = require('../dist-server/server/authServer.js');
 
 const applicationPath = path.resolve(process.argv[2]);
 const config = JSON.parse(fs.readFileSync(path.join(applicationPath, 'dist-electron/auth-config.json'), 'utf8'));
-const endpoint = new URL(config.url);
+const endpoint = new URL(process.env.REMIX_TEST_AUTH_URL || config.url);
 assert.equal(endpoint.hostname, '127.0.0.1', '此验证脚本只连接本机测试授权服务');
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'remix-remote-desktop-'));
 const desktopDirectory = path.join(directory, 'desktop');
 fs.mkdirSync(desktopDirectory);
-fs.writeFileSync(path.join(desktopDirectory, 'auth-server-binding.json'), JSON.stringify({ version: 1, url: config.url }));
+fs.writeFileSync(path.join(desktopDirectory, 'auth-server-binding.json'), JSON.stringify({ version: 1, url: endpoint.origin }));
 app.setPath('userData', desktopDirectory);
 const password = 'Smoke-' + randomUUID();
 let server;

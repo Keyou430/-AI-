@@ -17,3 +17,19 @@ dist-server/
 auth-data/
 *.pem
 *.key
+
+# 本地部署、压测和交付资料，不进入公开仓库
+docs/企业交付平台部署操作手册.*
+docs/服务器授权服务部署*
+docs/用户操作软件指南-1.0.27*
+docs/线上授权压测-*
+docs/online-auth-load-*
+docs/图文流程排查证据/
+scripts/onlineAuth*.cjs
+scripts/generate_docx_guide.py
+scripts/make_guide.cjs
+*.exe
+*.blockmap
+*.sha256
+auth-server-binding.json
+providers.encrypted*

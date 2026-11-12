@@ -13,7 +13,6 @@ function installAPI(extra: Record<string, unknown> = {}) {
   useImageTextStore.setState({ ...useImageTextStore.getInitialState() });
   return saved;
 }
-const nextTurn = () => new Promise<void>(resolve => setImmediate(resolve));
 
 test('确认前生成被阻止；失败旧图保留，成功页不随重试重复生成', async () => {
   const calls: string[] = []; let fail = true;
@@ -68,11 +67,12 @@ test('取消后忽略迟到图片并停止后续页，旧结果保留', async ()
 });
 test('策划完成后的保存期间取消，不自动启动生图', async () => {
   let saveResolve!: (value: any) => void; let images = 0;
+  let saving!: () => void; const started = new Promise<void>(resolve => { saving = resolve; });
   installAPI({ planImageText: async ({ draft }: any) => ({ success: true, data: draft }),
-    saveImageTextHistory: async () => new Promise(resolve => { saveResolve = resolve; }),
+    saveImageTextHistory: async () => new Promise(resolve => { saveResolve = resolve; saving(); }),
     generateImageText: async () => { images++; return { success: false }; } });
   const draft = imageTextFixture(); draft.style = '新风格'; useImageTextStore.getState().loadDraft(draft);
-  const running = useImageTextStore.getState().plan('优化风格'); await nextTurn();
+  const running = useImageTextStore.getState().plan('优化风格'); await started;
   await useImageTextStore.getState().cancel(); saveResolve({ success: true }); await running;
   assert.equal(images, 0);
 });

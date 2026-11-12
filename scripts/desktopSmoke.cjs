@@ -19,7 +19,8 @@ async function preparePackagedAuth() {
   const { createAuthServer } = require('../dist-server/server/authServer.js');
   testAuthServer = await createAuthServer({ dataDirectory: path.join(dataDirectory, 'auth-fixture'), adminPassword: password });
   await new Promise(resolve => testAuthServer.listen(0, '127.0.0.1', resolve));
-  const origin = new URL(JSON.parse(fs.readFileSync(path.join(applicationPath, 'dist-electron/auth-config.json'), 'utf8')).url).origin;
+  const config = JSON.parse(fs.readFileSync(path.join(applicationPath, 'dist-electron/auth-config.json'), 'utf8'));
+  const origin = new URL(config.binding === 'installation' ? 'https://auth.smoke.test' : config.url).origin;
   fs.writeFileSync(path.join(dataDirectory, 'auth-server-binding.json'), JSON.stringify({ version: 1, url: origin }));
   const fixtureOrigin = 'http://127.0.0.1:' + testAuthServer.address().port;
   globalThis.fetch = (input, init) => {
@@ -32,7 +33,7 @@ const logDirectory = path.join(dataDirectory, 'logs');
 const readLogs = () => fs.readdirSync(logDirectory).filter(name => name.endsWith('.log')).flatMap(name =>
   fs.readFileSync(path.join(logDirectory,name),'utf8').trim().split('\n').map(line => JSON.parse(line)));
 let completed = false;
-const timer = setTimeout(() => { console.error('桌面验证超时'); app.exit(1); }, 90000);
+const timer = setTimeout(() => { console.error('桌面验证超时'); app.exit(1); }, 120000);
 const waitFor = async (window, expression) => {
   const deadline = Date.now() + 20000;
   while (Date.now() < deadline) {
@@ -45,6 +46,10 @@ const waitFor = async (window, expression) => {
 
 app.on('browser-window-created', (_event, window) => {
   window.show = () => {};
+  const execute = window.webContents.executeJavaScript.bind(window.webContents);
+  window.webContents.executeJavaScript = (expression, ...args) => execute(expression, ...args).catch(error => {
+    throw new Error('桌面验收脚本失败：' + expression.slice(0, 240), { cause: error });
+  });
   window.webContents.once('did-finish-load', async () => {
     try {
       const call = (method, payload) => window.webContents.executeJavaScript(
@@ -57,6 +62,7 @@ app.on('browser-window-created', (_event, window) => {
       await window.webContents.executeJavaScript('setTimeout(() => { throw new Error("LOG_PRIVATE_RENDERER_ERROR"); }, 0); setTimeout(() => { Promise.reject(new Error("LOG_PRIVATE_RENDERER_REJECTION")); }, 0); true;');
       await waitFor(window, 'window.electronAPI.getAuthStatus().then(() => true)');
       assert.equal((await call('parseVideo',{rawInput:'https://v.douyin.com/demo/',enableMockFallback:true})).errorCode,'AUTH_REQUIRED');
+      assert.equal((await call('fetchHotspots')).errorCode,'AUTH_REQUIRED');
       // 通过实际首屏表单完成管理员初始化或远程登录。
       await window.webContents.executeJavaScript(
         (remotePackage ? 'document.querySelector("[name=username]").value="admin";' : 'document.querySelector("[name=displayName]").value="测试管理员";') +
@@ -65,6 +71,7 @@ app.on('browser-window-created', (_event, window) => {
       await waitFor(window, 'Boolean(document.querySelector("nav button[aria-label=账号管理]"))');
       assert.equal((await call('listHistoryFromDB')).records.length, 0);
       // 测试响应仅由验收脚本的本地 HTTP/SSE 服务提供，产品只走真实请求。
+      const imagePlanningInputs = [];
       const providerServer = http.createServer(async (request, response) => {
         if (request.url === '/image-digest') {
           response.writeHead(200, { 'Content-Type': 'application/json' });
@@ -85,12 +92,16 @@ app.on('browser-window-created', (_event, window) => {
         if (messages[0].content.includes('小红书图文策划师')) {
           const input = JSON.parse(prompt);
           const current = input.current;
+          assert.ok(input.remixContext);
+          assert.match(messages[0].content, /无论素材来自小红书链接、人工指定图文还是热点转入/);
+          assert.match(messages[0].content, /共同机制→行业标签→用户价值/);
+          imagePlanningInputs.push(input.remixContext);
           const pages = current.pages.length ? current.pages : [
             { id: '', text: '图文封面', visual: '自然光实景封面', referenceIds: [] },
             { id: '', text: '方法介绍', visual: '实景细节', referenceIds: [] },
           ];
           if (input.instruction.includes('优化第二页')) pages[1].text = '优化后的方法介绍';
-          const plan = { title: '图文验收二创', body: current.body || '二创发布正文', tags: ['收纳'], style: current.style || '自然光实景', notices: [], pages };
+          const plan = { title: '图文验收二创', body: current.body || '二创发布正文', tags: ['收纳'], style: current.style || '自然光实景', notices: ['行业关联：原帖出行场景→高峰规划→新能源汽车→返程更有准备→出行科普；属于场景类比，不代表事件使用过本公司产品。'], pages };
           response.writeHead(200, { 'Content-Type': 'text/event-stream' });
           response.end('data: ' + JSON.stringify({ choices: [{ delta: { content: JSON.stringify(plan) } }] }) + '\n\ndata: [DONE]\n\n');
           return;
@@ -113,6 +124,8 @@ app.on('browser-window-created', (_event, window) => {
         llmApiKey: 'fixture-key', llmBaseUrl: baseURL, llmModel: 'fixture-model', videoParserApiKey: 'fixture-key', videoParserEndpoint: baseURL + '/parse' }; };
       // 旧持久化配置启用仿真也不能恢复入口或返回示例数据。
       await window.webContents.executeJavaScript('localStorage.setItem("video-remix-ai-full-v3-storage", JSON.stringify({version:1,state:{settings:{enableMockFallback:true}}}))');
+      const fixtureIndustry = { primaryIndustry: '新能源 / 智能出行与绿色能源', subCategories: ['新能源汽车', '续航', '补能规划'], targetAudience: '电动车主', corePainPoints: ['排队补能'], suggestedAngles: ['返程规划'], lastUpdated: Date.now(), isAutoDetected: false };
+      await window.webContents.executeJavaScript('localStorage.setItem("video-remix-trending-v1", ' + JSON.stringify(JSON.stringify({ state: { profile: fixtureIndustry }, version: 0 })) + ')');
       const reloaded = new Promise(resolve => window.webContents.once('did-finish-load', resolve));
       window.webContents.reload(); await reloaded;
       await waitFor(window, 'Boolean(document.querySelector("nav button[aria-label=设置]"))');
@@ -159,6 +172,7 @@ app.on('browser-window-created', (_event, window) => {
       await window.webContents.executeJavaScript('document.querySelector("nav button[aria-label=历史记录]").click()');
       await waitFor(window, 'document.body.innerText.includes("切换记录B")');
       await window.webContents.executeJavaScript('document.querySelector("[data-record-id=smoke-race-b]").click()');
+      await waitFor(window, 'document.querySelector("[aria-label=历史详情] h2")?.textContent === "切换记录B"');
       await window.webContents.executeJavaScript('Array.from(document.querySelectorAll("button")).find(el => el.textContent.includes("重新编辑")).click()');
       await waitFor(window, 'document.querySelector("textarea")?.value === "记录B独立口播"');
       await waitFor(window, 'Boolean(document.querySelector("[data-testid=extract-video]:not(:disabled)"))');
@@ -229,7 +243,7 @@ app.on('browser-window-created', (_event, window) => {
         await window.webContents.executeJavaScript('Array.from(document.querySelectorAll("[role=menuitem]")).find(el => el.textContent.trim() === ' + JSON.stringify(direction) + ').click()');
       };
       const imageHistory = async () => (await call('listImageTextHistory')).data;
-      const layoutDirectory = applicationPath.endsWith('.asar') ? path.join(__dirname, '..', 'release', 'three-module-layout-' + require(path.join(applicationPath, 'package.json')).version) : path.join(applicationPath, 'docs', '图文流程排查证据', '2026-11-02-删除跳转-三模块布局');
+      const layoutDirectory = process.env.REMIX_SMOKE_OUTPUT || (applicationPath.endsWith('.asar') ? path.join(__dirname, '..', 'release', 'three-module-layout-' + require(path.join(applicationPath, 'package.json')).version) : path.join(applicationPath, 'docs', '图文流程排查证据', '2026-11-02-删除跳转-三模块布局'));
       fs.mkdirSync(layoutDirectory, { recursive: true });
       const layoutChecks = [];
       const layoutEval = (fn, ...args) => window.webContents.executeJavaScript('(' + fn.toString() + ')(' + args.map(value => JSON.stringify(value)).join(',') + ')').catch(error => { throw new Error('布局脚本失败：' + fn.toString(), { cause: error }); });
@@ -333,6 +347,28 @@ app.on('browser-window-created', (_event, window) => {
         assert.equal(await window.webContents.executeJavaScript('Boolean(document.querySelector("[aria-label=图文结果]"))'), true);
         assert.equal(await window.webContents.executeJavaScript('document.querySelector("[data-testid=source-keywords]").textContent.includes("外贸")'), true);
         const initialDraft = (await imageHistory())[0];
+        assert.equal(initialDraft.source.sourceHotspot, undefined);
+        assert.deepEqual(initialDraft.remixContext.industryProfile, fixtureIndustry);
+        assert.equal(initialDraft.remixContext.companyBusinessProfile, '');
+        assert.deepEqual(imagePlanningInputs[0].industryProfile, fixtureIndustry);
+        assert.equal(await layoutEval(() => document.querySelector('[data-testid=image-text-industry-context]').textContent.includes('新能源 / 智能出行与绿色能源')), true);
+        assert.equal(await layoutEval(() => document.querySelector('[data-testid=image-text-plan-notices]').textContent.includes('行业关联：')), true);
+        const noticesLayout = await layoutEval(() => {
+          const section = document.querySelector('[data-testid=image-text-plan-scroll]');
+          const notices = section.querySelector('[data-testid=image-text-plan-notices]');
+          const collapsedByDefault = !notices.open;
+          const atBottom = section.lastElementChild === notices;
+          notices.querySelector('summary').click();
+          const expandsWithContent = notices.open && notices.innerText.includes('行业关联：');
+          notices.querySelector('summary').click();
+          return { collapsedByDefault, atBottom, expandsWithContent, collapsesOnClick: !notices.open };
+        });
+        assert.ok(Object.values(noticesLayout).every(Boolean), JSON.stringify(noticesLayout));
+        layoutRecord('plan-notices-bottom-collapsed', noticesLayout);
+        await layoutEval(() => { const section = document.querySelector('[data-testid=image-text-plan-scroll]'); section.scrollTop = section.scrollHeight; });
+        await captureLayout('策划说明-底部默认收起');
+        await layoutEval(() => { document.querySelector('[data-testid=image-text-plan-scroll]').scrollTop = 0; });
+        layoutRecord('industry-remix-direct-note', { ordinaryNoteUsesIndustryContext: true, connectionRuleInModelRequest: true, industryAndBasisVisible: true, noImagesBeforeConfirmation: imageCalls === 0 });
         assert.equal((await call('generateImageText', { draft: initialDraft, pageId: initialDraft.pages[0].id, taskId: randomUUID() })).success, false);
         assert.equal(imageCalls, 0);
         // 布局验收沿用真实入口和表单，仅供应商、授权及用户数据使用隔离样本。
@@ -463,6 +499,12 @@ app.on('browser-window-created', (_event, window) => {
 
         await waitFor(window, 'window.electronAPI.listImageTextHistory().then(r => r.data[0]?.pages.every(p => p.assetId))');
         assert.equal(imageCalls, 2);
+        for (const request of imageRequests) {
+          assert.ok(request.prompt.includes(JSON.stringify(initialDraft.remixContext)));
+          assert.match(request.prompt, /不重新选择关联角度/);
+          assert.doesNotMatch(request.prompt, /行业关联：原帖出行场景/);
+        }
+        layoutRecord('industry-remix-image-generation', { images: imageRequests.length, sameIndustryAsPlanning: true, approvedPagePreserved: true, analysisExcludedFromImage: true });
         const generated = (await imageHistory())[0];
         await waitFor(window, 'Boolean(document.querySelector("[data-testid=image-text-preview] img")?.complete)');
         for (const [width, height] of [[1366, 768], [1440, 900], [1920, 1080], [390, 844]]) {
@@ -477,6 +519,7 @@ app.on('browser-window-created', (_event, window) => {
         await resizeLayout(1366, 768);
         await selectLayoutTab('发布文案');
         assert.ok(await layoutEval(() => document.querySelector('[data-testid=image-text-title]').getBoundingClientRect().height > 0));
+        assert.equal(await layoutEval(() => { const section = document.querySelector('[data-testid=image-text-plan-scroll]'); const notices = section.querySelector('[data-testid=image-text-plan-notices]'); return !notices.open && section.lastElementChild === notices; }), true);
         assert.equal(await layoutEval(() => !!document.querySelector('[aria-label=图文结果] h2')), false);
         assert.deepEqual(await layoutEval(() => Array.from(document.querySelectorAll('[aria-label=图文编辑分页] [role=tab]')).map(el => el.textContent.trim())), ['发布文案', '素材 ' + generated.references.length]);
         await layoutEval(() => { window.layoutClipboardWrite = navigator.clipboard.writeText; navigator.clipboard.writeText = async text => { window.layoutCopiedText = text; }; });
@@ -634,6 +677,7 @@ app.on('browser-window-created', (_event, window) => {
         globalThis.fetch = beforeImageFetch; dialog.showOpenDialog = beforeDialog; window.hide();
         LocalProviderService.prototype.read = originalRead;
       }
+      await require(path.join(__dirname, 'trendingSmoke.cjs'))({ window, call, waitFor, LocalProviderService, platforms: require(path.join(applicationPath, 'dist-electron', 'services', 'trendingTypes.js')).TRENDING_PLATFORMS, version: require(path.join(applicationPath, 'package.json')).version });
       await new Promise(resolve => providerServer.close(resolve));
       const status = await call('getAuthStatus');
       assert.equal(status.user.username,'admin');
@@ -804,7 +848,13 @@ app.on('browser-window-created', (_event, window) => {
       clearTimeout(timer);
       app.quit();
     } catch (error) {
-      console.error(error); clearTimeout(timer); app.exit(1);
+      console.error(error);
+      const output = process.env.REMIX_SMOKE_OUTPUT || path.join(__dirname, '../release');
+      fs.mkdirSync(output, { recursive: true });
+      fs.writeFileSync(path.join(output, 'desktop-failure.json'), JSON.stringify({ message: error.message,
+        dialogs: await window.webContents.executeJavaScript('Array.from(document.querySelectorAll("[role=dialog]")).map(el => el.innerText)').catch(() => []),
+        logs: readLogs().slice(-30) }, null, 2));
+      clearTimeout(timer); app.exit(1);
     }
   });
 });

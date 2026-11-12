@@ -165,8 +165,8 @@ export function ImageTextView() {
         <section id="image-text-plan" aria-label="图文策划与确认" className={cn('surface min-h-0 flex-col overflow-hidden',mobileStep === 'plan' ? 'flex' : 'hidden lg:flex')}>
           <div className="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-2">
             <h2 className="section-title shrink-0">{draft && !draft.confirmed ? '核对并确认' : '稿件与素材'}</h2>
-            <div className="flex min-w-0 items-center gap-1"><span className="muted-copy truncate">{draft ? (draft.typeOrigin === 'manual' ? '人工指定' : '自动识别') + ' · ' + draft.pages.length + ' 张' : '粘贴链接后显示'}</span>
-              {draft && !draft.confirmed && <Button size="sm" variant="ghost" className="px-2" disabled={busy || uploading} onClick={() => { void state.plan(); }}>重新策划草案</Button>}
+            <div className="flex min-w-0 items-center gap-1"><span className="muted-copy truncate">{draft ? (draft.source.sourceHotspot ? '热点话题策划' : draft.typeOrigin === 'manual' ? '人工指定' : '自动识别') + ' · ' + draft.pages.length + ' 张' : '粘贴链接后显示'}</span>
+              {draft && !draft.confirmed && <Button size="sm" variant="ghost" className="px-2" disabled={busy || uploading} title="按当前行业、公司业务和知识库重新策划" onClick={() => { void state.plan(); }}>重新策划草案</Button>}
             </div>
           </div>
           {draft ? <Tabs.Root value={activeTab} onValueChange={value => { if (tabs.some(item => item === value)) { setTab(value as ImageTextTab); if (planScroll.current) planScroll.current.scrollTop = 0; } }} className="flex min-h-0 flex-1 flex-col">
@@ -174,6 +174,11 @@ export function ImageTextView() {
               {tabs.map(value => <Tabs.Tab key={value} value={value} className="tab">{value === 'copy' ? '文案' : value === 'pages' ? activeTab === 'pages' ? '逐图' : '逐图 · 第 ' + (draft.pages.findIndex(p => p.id === page?.id) + 1) + ' 图' : value === 'style' ? '风格' : value === 'assets' ? '素材 ' + draft.references.length : '发布文案'}</Tabs.Tab>)}
             </Tabs.List>
             <div ref={planScroll} className="min-h-0 flex-1 overflow-y-auto p-4" data-testid="image-text-plan-scroll">
+              <div className="mb-4 rounded-md border p-3 text-xs" data-testid="image-text-industry-context">
+                <p className="font-medium">目标行业：{draft.remixContext?.industryProfile?.primaryIndustry || draft.source.sourceHotspot?.industryProfile?.primaryIndustry || (draft.remixContext ? '依据公司业务与知识库' : '尚未绑定，请重新策划')}</p>
+                {!!(draft.remixContext?.industryProfile?.subCategories || draft.source.sourceHotspot?.industryProfile?.subCategories)?.length && <p className="mt-1 break-words text-muted-foreground">行业标签：{(draft.remixContext?.industryProfile?.subCategories || draft.source.sourceHotspot?.industryProfile?.subCategories)?.join('、')}</p>}
+                <p className="mt-1 text-muted-foreground">先分析素材与行业的关联，再生成文案和分页。重新策划应用当前行业，优化沿用本稿行业。</p>
+              </div>
               {!draft.confirmed && <>
                 <Tabs.Panel value="copy" keepMounted className="space-y-4">
                   <TextField label="发布标题" value={draft.title} disabled={busy || uploading} onChange={title => state.updateDraft({ title })} rows={2} />
@@ -212,6 +217,10 @@ export function ImageTextView() {
                 {draft.confirmed && !draft.references.length && <p className="muted-copy">{imageProtocol === 'glm' ? '当前 GLM 根据文字要求重新生成图片；使用参考图请切换 Agnes／Seedream。' : '当前没有参考素材，可在图片优化中按页补传实际场景图。'}</p>}
                 <details className="disclosure"><summary>原帖素材</summary><div className="mt-3 space-y-3"><p className="reading-text">{draft.source.publishedText || draft.source.transcript}</p><ExtractedContentDetails content={draft.source} /></div></details>
               </Tabs.Panel>
+              {!!draft.notices.length && <details key={draft.id} className="mt-4 rounded-md border bg-muted/40 p-3 text-xs" data-testid="image-text-plan-notices">
+                <summary className="cursor-pointer font-medium">策划说明与核对事项</summary>
+                <ul className="mt-2 list-disc space-y-2 pl-4 text-muted-foreground">{draft.notices.map((notice, index) => <li key={index} className="whitespace-pre-wrap break-words">{notice}</li>)}</ul>
+              </details>}
 
             </div>
             {!draft.confirmed && <footer className="shrink-0 space-y-2 border-t bg-card px-3 py-2 pb-[max(.5rem,env(safe-area-inset-bottom))]">

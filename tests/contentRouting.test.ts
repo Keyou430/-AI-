@@ -19,7 +19,9 @@ test('一次提取图文自动跳转并自动策划，不改已有视频工作�
     generateImageText: async () => { images++; return { success: true }; }, saveImageTextHistory: async () => ({ success: true }),
   } } });
   useAppStore.getState().setParsedVideo({ ...source, contentKind: 'video', durationSec: 18, transcript: '已有未保存视频' });
-  await extractAndRoute(source.extractedUrl); await new Promise<void>(resolve => setImmediate(resolve));
+  await extractAndRoute(source.extractedUrl);
+  const deadline = Date.now() + 3000;
+  while (useImageTextStore.getState().taskId) { if (Date.now() > deadline) throw new Error('图文策划未完成'); await new Promise<void>(resolve => setImmediate(resolve)); }
   assert.equal(parsed, 1); assert.equal(plans, 1); assert.equal(images, 0);
   assert.equal(useAppStore.getState().activeNav, 'image-text'); assert.equal(useAppStore.getState().editedTranscript, '已有未保存视频');
   assert.equal(useImageTextStore.getState().draft!.source.publishedText, source.publishedText);

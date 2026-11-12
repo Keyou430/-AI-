@@ -54,3 +54,22 @@ test('成品校验整套比例，容忍厂商标准档位取整，拒绝错比�
   assert.throws(() => assertImageRatio(1024, 1024, '3:4'), /比例/);
   assert.throws(() => assertImageRatio(0, 0, '1:1'), /比例/);
 });
+
+test('模型省略配套字段时沿用已有内容并明确提醒，保留图片及页面标识', () => {
+  const d = draftFixture(); d.tags = ['收纳'];
+  const next = applyImageTextPlan(d, JSON.stringify({ pages: d.pages }), () => 'new-id');
+  assert.equal(next.title, d.title); assert.equal(next.body, d.body); assert.equal(next.style, d.style); assert.deepEqual(next.tags, d.tags);
+  assert.equal(next.pages[0].assetId, 'old-a'); assert.match(next.notices[0], /本次策划未提供.*发布正文/);
+});
+test('模型错误字段和参考图给出明确定位，不破坏原草稿', () => {
+  const d = draftFixture(); const before = JSON.stringify(d);
+  for (const [field, value, message] of [['tags', '收纳', /tags/], ['body', null, /body/], ['title', '字'.repeat(1001), /title/], ['styleCard', { palette: '蓝' }, /styleCard.layout/], ['evidence', [{ documentId: 3 }], /evidence/]] as const) {
+    assert.throws(() => applyImageTextPlan(d, JSON.stringify({ ...d, [field]: value }), () => 'new-id'), message);
+  }
+  assert.throws(() => applyImageTextPlan(d, JSON.stringify({ ...d, pages: [{ text: '封面', visual: '实景', referenceIds: ['invented'] }] }), () => 'new-id'), /referenceIds.*不存在/);
+  assert.throws(() => applyImageTextPlan(d, JSON.stringify({ ...d, pages: [{ text: '封面' }] }), () => 'new-id'), /pages\[0\].visual/);
+  assert.equal(JSON.stringify(d), before);
+});
+test('缺少行业关联时返回可操作原因，不生成或保存伪策划', () => {
+  assert.throws(() => applyImageTextPlan(draftFixture(), JSON.stringify({ associationError: '请补充目标受众或使用场景' }), () => 'new-id'), /行业关联不足.*目标受众/);
+});

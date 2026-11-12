@@ -1,3 +1,5 @@
+import { HOTSPOT_INDUSTRY_RULE } from '../../electron/services/hotspotRemix';
+import { PLATFORM_LABELS } from '../../electron/services/trendingTypes';
 import { buildKnowledgeContext } from './knowledgeContext';
 import { KeywordTag, KnowledgeDocument, ParsedVideoInfo } from '../types';
 import { getEditableSourceText, getSourceKeywords, isImageTextContent } from './extractedContent';
@@ -37,6 +39,7 @@ export function buildSystemPrompt(): string {
 4. 口播稿必须严格匹配对应镜头时长；若时长不足或不适合口播，则不写口播，只标注环境音
 5. 镜头序号、镜头数量和时间统一使用阿拉伯数字，其余内容用中文，使用中文全角标点，严禁出现英文双引号、英文单引号、未闭合括号
 6. 绝对禁止出现“字幕”二字及其他相关字段，视频画面中不得出现任何文字元素
+若输入含热点话题来源，话题背景和建议角度不是原视频提取结果，不得编造原片镜头、原口播或已核实的新闻事实。
 7. 只输出分镜脚本本身，不写任何多余内容，包括解释、开场白、备注等`;
 }
 
@@ -71,6 +74,7 @@ export function buildUserPrompt(input: BuildPromptInput): string {
       ...brandWords.map((text) => ({ text, weight: 5 })),
       ...jargonWords.map((text) => ({ text, weight: 3 })),
       ...sourceKeywords.map((text) => ({ text, weight: 2 })),
+      ...(videoInfo.sourceHotspot?.industryProfile?.subCategories || []).map(text => ({ text, weight: 3 })),
     ],
     text: [
       editedTranscript || getEditableSourceText(videoInfo),
@@ -80,12 +84,14 @@ export function buildUserPrompt(input: BuildPromptInput): string {
     ].join('\n'),
   }).block;
 
-  const sourceLabel = imageTextContent ? '图文' : '视频';
+  const sourceLabel = videoInfo.sourceHotspot ? '话题' : imageTextContent ? '图文' : '视频';
   const lines: string[] = [
     `请基于以下【原热点${sourceLabel}提取/人工修订内容】与【本公司业务及本地知识库配置】，生成商业二创分镜脚本：`,
     ``,
     `================ 一、原热点${sourceLabel}信息（借势源） ================`,
-    `1. 原${sourceLabel}来源平台：${videoInfo.platform === 'douyin' ? '抖音' : '小红书'}`,
+    `1. 原${sourceLabel}来源平台：${PLATFORM_LABELS[videoInfo.platform]}`,
+    ...(videoInfo.sourceHotspot ? [`来源类型：热点话题。数据源：${videoInfo.sourceHotspot.sourceName}；来源更新：${new Date(videoInfo.sourceHotspot.sourceUpdatedAt).toISOString()}。仅据已提供背景策划，不视作原帖全文或事实核验。`] : []),
+    ...(videoInfo.sourceHotspot ? [HOTSPOT_INDUSTRY_RULE, `转入时的行业预设与标签：${JSON.stringify(videoInfo.sourceHotspot.industryProfile || null)}。先在内部完成关联链；能关联时只输出规定的分镜脚本，不能关联时只返回“关联不足：”及原因。`] : []),
     `2. 生效的${imageTextContent ? '图文素材' : '原视频口播'}文案（含人工修订）：${editedTranscript || getEditableSourceText(videoInfo)}`,
     `3. 生效的原片画面与镜头概述（含人工修订）：${editedVisualSummary || '未提供画面描述'}`,
     ...(videoInfo.publishedText ? [imageTextContent
@@ -95,7 +101,7 @@ export function buildUserPrompt(input: BuildPromptInput): string {
       ? [`原素材关键词（来自原帖标签）：${getSourceKeywords(videoInfo).join('、')}`] : []),
     ``,
     `================ 二、本公司主营业务与关键词约束 ================`,
-    `4. 本公司主营业务概述：${companyBusinessProfile || '精品冷萃咖啡液与办公室便携冲调饮品'}`,
+    `4. 本公司主营业务概述：${companyBusinessProfile || (videoInfo.sourceHotspot ? '未配置；仅使用已提供的行业标签与知识库，不猜测公司业务' : '精品冷萃咖啡液与办公室便携冲调饮品')}`,
     `5. 必须自然植入的核心业务/产品词：${brandWords.length > 0 ? brandWords.join('、') : '无特殊指定'}`,
     `6. 推荐融合的目标客群痛点与转化卖点词：${jargonWords.length > 0 ? jargonWords.join('、') : '无特殊指定'}`,
     `7. 严禁出现的违禁词：${[...forbiddenWords, '字幕'].join('、')}`,

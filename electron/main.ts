@@ -1,3 +1,4 @@
+import { TRENDING_PLATFORMS, type TrendingPlatform, type IndustryProfile, type HotspotItem } from './services/trendingTypes';
 import { ImageTextAssets } from './services/imageTextAssets';
 import { recoverImageTextCleanup } from './services/imageTextDeletion';
 import { ImageAssetLocationService } from './services/imageAssetLocation';
@@ -33,6 +34,14 @@ import {
   parseLocalKnowledgeFile,
   parseKnowledgeBuffer,
 } from './services/knowledgeParser';
+import {
+  getAllPlatformHotspots,
+  getPlatformHotspots,
+} from './services/trendingProvider';
+import {
+  analyzeProfileWithLLM,
+  rankHotspotsWithLLM,
+} from './services/trendingIpc';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -307,6 +316,36 @@ handle('db:history:open-folder', async () => {
   }
   return { success: false };
 });
+
+// ============================================================================
+// 行业热点与 AI 选题分析
+// ============================================================================
+handle('trending:fetch', async (event, payload?: { platform?: 'all' | TrendingPlatform; force?: boolean }) => withTask(event.sender.id, async signal => {
+  const platform = payload?.platform || 'all';
+  if (platform !== 'all' && !TRENDING_PLATFORMS.includes(platform)) throw new Error('不支持该热点平台。');
+  const result = platform === 'all' ? await getAllPlatformHotspots(signal, payload?.force === true) : await getPlatformHotspots(platform, signal, payload?.force === true);
+  return { success: true, ...result };
+}));
+
+handle('trending:analyze-profile', async (event, payload: { docSnippets: string[]; keywords: string[] }) => withTask(event.sender.id, async signal => {
+  const config = storedLlmConfig();
+  const profile = await analyzeProfileWithLLM(config, payload.docSnippets || [], payload.keywords || [], signal);
+  return { success: true, profile };
+}));
+
+handle('trending:rank', async (event, payload: { profile: IndustryProfile; candidates: HotspotItem[] }) => withTask(event.sender.id, async signal => {
+  const config = storedLlmConfig();
+  const ranked = await rankHotspotsWithLLM(config, payload.profile, payload.candidates || [], signal);
+  return { success: true, ranked };
+}));
+
+handle('system:open-external', async (_event, url: string) => {
+  if (typeof url === 'string' && /^https?:\/\//i.test(url)) {
+    await shell.openExternal(url);
+    return { success: true };
+  }
+  return { success: false, error: '链接格式无效' };
+}, { public: true });
 
 // ============================================================================
 // [Phase 3] IPC: 本地知识库文件读取解析 (pdf-parse / mammoth / utf-8) 与持久化

@@ -147,7 +147,7 @@ test('员工版配置丢失或无效时拒绝启动，不回退本机管理员�
     assert.throws(() => createDesktopAuth(db, directory, directory), { code: 'AUTH_CONFIG_INVALID' });
     await fs.writeFile(path.join(directory, 'package.json'), JSON.stringify({ authMode: 'remote' }));
     assert.throws(() => createDesktopAuth(db, directory, directory), { code: 'AUTH_CONFIG_INVALID' });
-    await fs.writeFile(path.join(directory, 'auth-config.json'), JSON.stringify({ url: 'http://114.132.186.95' }));
+    await fs.writeFile(path.join(directory, 'auth-config.json'), JSON.stringify({ url: 'http://192.0.2.1' }));
     assert.throws(() => createDesktopAuth(db, directory, directory), { code: 'AUTH_CONFIG_INVALID' });
     await fs.writeFile(path.join(directory, 'auth-config.json'), JSON.stringify({ url: 'https://auth.example.com' }));
     assert.ok(createDesktopAuth(db, directory, directory) instanceof RemoteAuthService);
@@ -156,7 +156,7 @@ test('员工版配置丢失或无效时拒绝启动，不回退本机管理员�
 
 test('授权服务强制 HTTPS，拒绝嵌入密码、重定向参数和无效地址', () => {
   assert.equal(validateAuthUrl('https://auth.example.com/'), 'https://auth.example.com');
-  for (const value of ['http://114.132.186.95', 'http://127.0.0.1', 'https://user:secret@auth.example.com',
+  for (const value of ['http://192.0.2.1', 'http://127.0.0.1', 'https://user:secret@auth.example.com',
     'https://auth.example.com/path', 'https://auth.example.com?key=secret', 'https://auth.example.com#secret', 'invalid']) {
     assert.throws(() => validateAuthUrl(value), { code: 'AUTH_CONFIG_INVALID' });
   }

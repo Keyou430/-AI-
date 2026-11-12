@@ -199,3 +199,40 @@ test('升级仅移除未编辑的内置示例，保留用户修改及业务记�
     assert.equal(records.find(record => record.id === sample.id)?.originalTranscript, '用户修改后的原稿');
   } finally { db.close(); await fs.rm(directory, { recursive: true, force: true }); }
 });
+
+
+test('热点来源及真实平台随视频和图文历史跨重启保留，旧历史兼容', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'remix-trending-history-'));
+  let db = new LocalSQLiteManager(directory, undefined, true);
+  try {
+    const base = (await db.listRecords())[0];
+    const { imageTextFixture } = await import('./helpers/imageTextFixture');
+    const sourceHotspot = { id: 'weibo-topic', platform: 'weibo' as const, title: '热点历史验证', url: 'https://s.weibo.com/weibo?q=fixture',
+      sourceName: '验收数据源', sourceUpdatedAt: 1794297600000, fetchedAt: 1794297601000, remixAngle: '业务知识科普' };
+    const source = { platform: 'weibo' as const, sourceHotspot, extractedUrl: sourceHotspot.url, title: sourceHotspot.title,
+      author: '验收数据源', durationSec: 0, transcript: '热点背景', visualSummary: '', suggestedCameraWork: '' };
+    await db.upsertRecord({ ...base, id: 'hotspot-video', platform: 'weibo', sourceUrl: source.extractedUrl, sourceContent: source });
+    const draft = { ...imageTextFixture(), id: 'hotspot-image', source: { ...source, platform: 'zhihu' as const,
+      sourceHotspot: { ...sourceHotspot, platform: 'zhihu' as const, url: 'https://www.zhihu.com/question/123456' }, extractedUrl: 'https://www.zhihu.com/question/123456', contentKind: 'image-text' as const } };
+    await db.saveImageTextRecord(draft);
+    const toutiaoHotspot = { ...sourceHotspot, id: 'toutiao-topic', platform: 'toutiao' as const, url: 'https://www.toutiao.com/trending/7706652717610962495/' };
+    const toutiaoSource = { ...source, platform: 'toutiao' as const, extractedUrl: toutiaoHotspot.url, sourceHotspot: toutiaoHotspot };
+    await db.upsertRecord({ ...base, id: 'toutiao-video', platform: 'toutiao', sourceUrl: toutiaoSource.extractedUrl, sourceContent: toutiaoSource });
+    await db.saveImageTextRecord({ ...draft, id: 'toutiao-image', source: { ...toutiaoSource, contentKind: 'image-text' } });
+    db.close(); db = new LocalSQLiteManager(directory, undefined, true);
+    const toutiao = await db.listRecords({ platform: 'toutiao' });
+    assert.equal(toutiao.length, 1); assert.equal(toutiao[0].id, 'toutiao-video');
+    assert.equal(toutiao[0].platform, 'toutiao'); assert.deepEqual(toutiao[0].sourceContent?.sourceHotspot, toutiaoHotspot);
+    const toutiaoImage = (await db.listImageTextRecords()).find(record => record.id === 'toutiao-image')!;
+    assert.equal(toutiaoImage.source.platform, 'toutiao'); assert.deepEqual(toutiaoImage.source.sourceHotspot, toutiaoHotspot);
+    const restored = (await db.listRecords({ platform: 'weibo' }))[0];
+    assert.equal(restored.id, 'hotspot-video'); assert.deepEqual(restored.sourceContent?.sourceHotspot, sourceHotspot);
+    assert.equal((await db.listRecords()).find(record => record.id === base.id)?.platform, base.platform);
+    const restoredImage = (await db.listImageTextRecords()).find(record => record.id === 'hotspot-image')!;
+    assert.equal(restoredImage.source.platform, 'zhihu'); assert.deepEqual(restoredImage.source.sourceHotspot, draft.source.sourceHotspot);
+  } finally {
+    db.close();
+    assert.ok(path.resolve(directory).startsWith(path.resolve(os.tmpdir(), 'remix-trending-history-')));
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});

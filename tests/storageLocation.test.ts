@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import { realpathSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { StorageLocationService } from '../electron/services/storageLocation';
@@ -40,7 +41,7 @@ test('存储地址重启后迁移完整数据库，保留原文件与设备配�
     const location = new StorageLocationService(source);
     assert.deepEqual(location.schedule(target), {
       directory: source,
-      pendingDirectory: await fs.realpath(target),
+      pendingDirectory: realpathSync(target),
     });
     assert.equal(
       (await original.getDatabaseInfo()).dbPath,
@@ -50,7 +51,7 @@ test('存储地址重启后迁移完整数据库，保留原文件与设备配�
     await fs.writeFile(path.join(source, 'provider-settings.json'), 'device-settings-stay');
     const sourceData = await fs.readFile(path.join(source, 'video-remix-history.sqlite'));
     const restarted = new StorageLocationService(source);
-    assert.equal(restarted.activatePending(), await fs.realpath(target));
+    assert.equal(restarted.activatePending(), realpathSync(target));
     assert.deepEqual(
       await fs.readFile(path.join(target, 'video-remix-history.sqlite')),
       sourceData
@@ -71,7 +72,7 @@ test('存储地址重启后迁移完整数据库，保留原文件与设备配�
       migrated.close();
     }
     assert.equal(new StorageLocationService(source).get().pendingDirectory, undefined);
-    assert.equal(new StorageLocationService(source).get().directory, await fs.realpath(target));
+    assert.equal(new StorageLocationService(source).get().directory, realpathSync(target));
   });
 });
 
@@ -103,7 +104,7 @@ test('迁移携带未合并的事务文件，目标目录丢失时保持原数�
     await fs.writeFile(path.join(source, 'video-remix-history.sqlite-wal'), 'pending-transaction');
     const location = new StorageLocationService(source);
     location.schedule(target);
-    assert.equal(new StorageLocationService(source).activatePending(), await fs.realpath(target));
+    assert.equal(new StorageLocationService(source).activatePending(), realpathSync(target));
     assert.equal(
       await fs.readFile(path.join(target, 'video-remix-history.sqlite-wal'), 'utf8'),
       'pending-transaction'

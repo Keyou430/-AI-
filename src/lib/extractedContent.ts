@@ -26,6 +26,7 @@ export function isImageTextContent(content: ParsedVideoInfo | null): boolean {
 
 export function getEditableSourceText(content: ParsedVideoInfo | null): string {
   if (!content) return '';
+  if (content.sourceHotspot) return content.transcript;
   return isImageTextContent(content) ? getExtractedText(content) : content.transcript;
 }
 

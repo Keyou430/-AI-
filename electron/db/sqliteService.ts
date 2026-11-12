@@ -5,6 +5,7 @@
  * - 落盘生成标准二进制 `.sqlite` 文件：`app.getPath('userData')/video-remix-history.sqlite`
  */
 
+import { TRENDING_PLATFORMS, type TrendingPlatform, type PlatformType } from '../services/trendingTypes';
 import type { ImageTextDraft } from '../services/imageTextTypes';
 import { assertImageTextDraft } from '../services/imageTextModel';
 import path from 'path';
@@ -64,7 +65,7 @@ export interface DBRefinementVersion {
 
 export interface DBHistoryRecord {
   id: string;
-  platform: 'douyin' | 'xiaohongshu';
+  platform: TrendingPlatform;
   sourceUrl: string;
   title: string;
   createdAt: string;
@@ -94,7 +95,7 @@ export interface DBKnowledgeDocument {
 
 export interface HistoryQueryFilter {
   search?: string;
-  platform?: 'all' | 'douyin' | 'xiaohongshu';
+  platform?: PlatformType;
 }
 
 export interface DatabaseStatusInfo {
@@ -475,7 +476,7 @@ export class LocalSQLiteManager {
 
     return {
       id: String(row.id),
-      platform: row.platform === 'xiaohongshu' ? 'xiaohongshu' : 'douyin',
+      platform: TRENDING_PLATFORMS.includes(row.platform) ? row.platform : 'douyin',
       sourceUrl: String(row.source_url || ''),
       title: String(row.title || ''),
       createdAt: String(row.created_at || ''),

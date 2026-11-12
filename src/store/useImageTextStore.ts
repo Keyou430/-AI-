@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useAppStore } from './useAppStore';
 import type { ParsedVideoInfo } from '../types';
 import { appendPageVersion, selectPageVersion, editImageTextStructure, removeImageReference } from '../../electron/services/imageTextReview';
 import { affectedPages } from '../../electron/services/imageTextModel';
@@ -11,6 +12,16 @@ function api() {
   return window.electronAPI;
 }
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : '图文操作失败，请重试。';
+// 延迟读取行业 store，避免热点转入与图文 store 之间的初始化循环。
+async function preparePlanningDraft(draft: ImageTextDraft, useCurrentIndustry: boolean): Promise<ImageTextDraft> {
+  if (!useCurrentIndustry && draft.remixContext) return structuredClone(draft);
+  const app = useAppStore.getState();
+  const companyBusinessProfile = app.settings.companyBusinessProfile;
+  const keywords = app.keywords.map(({ text, category }) => ({ text, category }));
+  const { useTrendingStore } = await import('./useTrendingStore');
+  const industryProfile = useTrendingStore.getState().profile || draft.source.sourceHotspot?.industryProfile || undefined;
+  return structuredClone({ ...draft, remixContext: { industryProfile, companyBusinessProfile, keywords } });
+}
 interface ImageTextState {
   draft: ImageTextDraft | null;
   records: ImageTextDraft[];
@@ -78,10 +89,12 @@ export const useImageTextStore = create<ImageTextState>((set, get) => ({
   },
   plan: async instruction => {
     const draft = get().draft; if (!draft || get().taskId) return;
-    const taskId = newId(); set({ taskId, taskKind: 'plan', progress: instruction ? '正在全局优化文案与分页…' : '正在融合知识库并策划图文草案…', error: null });
+    const taskId = newId(); set({ taskId, taskKind: 'plan', progress: instruction ? '正在沿用行业关联优化文案与分页…' : '正在分析素材与行业关联并策划图文草案…', error: null });
     let runImages = false;
     try {
-      const result = await api().planImageText({ draft: structuredClone(draft), instruction, taskId });
+      const planningDraft = await preparePlanningDraft(draft, !instruction);
+      if (get().taskId !== taskId) return;
+      const result = await api().planImageText({ draft: planningDraft, instruction, taskId });
       if (get().taskId !== taskId) return;
       if (!result.success || !result.data) throw new Error(result.error || '图文策划失败，请检查文本模型配置。');
       set({ draft: result.data, activePageId: result.data.pages.some(p => p.id === get().activePageId) ? get().activePageId : result.data.pages[0]?.id || null });
@@ -95,7 +108,9 @@ export const useImageTextStore = create<ImageTextState>((set, get) => ({
     if (get().taskId) throw new Error('请等待当前任务完成。');
     const taskId = newId(); set({ taskId, taskKind: 'plan', error: null, progress: '正在生成优化预览，尚未提交生图…' });
     try {
-      const result = await api().planImageText({ draft: structuredClone(draft), instruction, taskId });
+      const planningDraft = await preparePlanningDraft(draft, false);
+      if (get().taskId !== taskId) throw new Error('优化预览已取消。');
+      const result = await api().planImageText({ draft: planningDraft, instruction, taskId });
       if (get().taskId !== taskId) throw new Error('优化预览已取消。');
       if (!result.success || !result.data) throw new Error(result.error || '优化预览生成失败。');
       return result.data;
@@ -205,6 +220,7 @@ export const useImageTextStore = create<ImageTextState>((set, get) => ({
     const draft = get().draft; if (!draft) return;
     const result = await api().saveImageTextHistory(structuredClone(draft));
     if (!result.success) throw new Error(result.error || '保存图文历史失败。');
+    await useAppStore.getState().refreshDatabaseInfo();
     if (get().draft?.id !== draft.id) return;
     set({ savedDraftKey: JSON.stringify(draft), records: [structuredClone(draft), ...get().records.filter(d => d.id !== draft.id)].sort((a,b) => b.createdAt.localeCompare(a.createdAt)) });
   },
@@ -212,6 +228,7 @@ export const useImageTextStore = create<ImageTextState>((set, get) => ({
     const result = await api().listImageTextHistory();
     if (!result.success || !result.data) throw new Error(result.error || '读取图文历史失败。');
     set({ records: result.data });
+    await useAppStore.getState().refreshDatabaseInfo();
   },
   loadDraft: (draft, discardChanges = false) => {
     if (get().taskId) throw new Error('请先等待图文任务完成或取消，再打开其他历史。');
@@ -222,6 +239,7 @@ export const useImageTextStore = create<ImageTextState>((set, get) => ({
     if (get().taskId && get().draft?.id === id) throw new Error('该图文正在处理，请先取消任务再删除。');
     const result = await api().deleteImageTextHistory(id);
     if (!result.success) throw new Error(result.error || '删除图文历史失败。');
+    await useAppStore.getState().refreshDatabaseInfo();
     set({ records: get().records.filter(d => d.id !== id), ...(get().draft?.id === id ? { draft: null, savedDraftKey: null, activePageId: null } : {}) });
   },
   cancel: async () => {

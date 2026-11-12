@@ -70,3 +70,19 @@ test('Windows 安装脚本验证接口、禁止覆盖绑定、卸载清理及保
     assert.equal(report.cases, 12);
   } finally { await f.dispose(); }
 });
+
+test('公开通用包只携带安装绑定模式，不嵌入环境中的服务器地址', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'remix-public-config-'));
+  try {
+    await fs.mkdir(path.join(directory, 'scripts'));
+    await fs.mkdir(path.join(directory, 'dist-electron/services'), { recursive: true });
+    await fs.copyFile(path.resolve('scripts/prepareUniversalConfig.cjs'), path.join(directory, 'scripts/prepareUniversalConfig.cjs'));
+    await fs.writeFile(path.join(directory, 'dist-electron/services/employeeAuth.js'), 'module.exports = {};');
+    const result = await promisify(execFile)(process.execPath, [path.join(directory, 'scripts/prepareUniversalConfig.cjs')], {
+      env: { ...process.env, REMIX_AUTH_URL: 'https://private.example.com' },
+    });
+    assert.deepEqual(JSON.parse(await fs.readFile(path.join(directory, 'dist-electron/auth-config.json'), 'utf8')), { binding: 'installation' });
+    assert.equal(result.stdout.includes('private.example.com'), false);
+    assert.equal(await fs.readFile(path.join(directory, 'dist-electron/services/desktopAuth.js'), 'utf8'), 'module.exports = {};');
+  } finally { await fs.rm(directory, { recursive: true, force: true }); }
+});

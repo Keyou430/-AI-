@@ -7,6 +7,7 @@ import { useAuthStore } from './store/useAuthStore';
 import { Sidebar } from './components/Sidebar';
 import { WorkbenchView } from './views/WorkbenchView';
 import { ImageTextView } from './views/ImageTextView';
+import { TrendingView } from './views/TrendingView';
 import { ContentTypeFallback } from './components/imageText/ContentTypeFallback';
 import { HistoryView } from './views/HistoryView';
 import { SettingsView } from './views/SettingsView';
@@ -46,6 +47,7 @@ const AuthenticatedApp: React.FC = () => {
       <main id="main-content" tabIndex={-1} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {activeNav === 'workbench' && <WorkbenchView />}
         {activeNav === 'image-text' && <ImageTextView />}
+        {activeNav === 'trending' && <TrendingView />}
         {activeNav === 'history' && <HistoryView />}
         {activeNav === 'settings' && <SettingsView />}
         {activeNav === 'accounts' && user?.role === 'admin' && <AccountsView />}

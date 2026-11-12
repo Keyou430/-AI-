@@ -1,5 +1,6 @@
 import type { ImageAssetLocationInfo } from './imageAssetLocation';
 import type { ParsedVideoData } from './videoParser';
+import type { IndustryProfile } from './trendingTypes';
 
 export const IMAGE_RATIOS = ['1:1', '3:4', '4:3', '16:9', '9:16', '2:3', '3:2', '21:9'] as const;
 export type ImageRatio = typeof IMAGE_RATIOS[number];
@@ -44,10 +45,16 @@ export interface ImageTextPage {
   currentVersionId?: string;
   reviewedVersionId?: string;
 }
+export interface ImageTextRemixContext {
+  industryProfile?: IndustryProfile;
+  companyBusinessProfile: string;
+  keywords: Array<{ text: string; category: 'brand' | 'jargon' | 'forbidden' }>;
+}
 export interface ImageTextDraft {
   id: string;
   createdAt: string;
   source: ParsedVideoData;
+  remixContext?: ImageTextRemixContext;
   typeOrigin: 'automatic' | 'manual';
   title: string;
   body: string;
