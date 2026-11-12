@@ -74,7 +74,15 @@ module.exports = async function trendingSmoke({ window, call, waitFor, LocalProv
     assert.equal(await evaluate('document.querySelector("[aria-label=热榜数据来源]").innerText.includes("来源过期")'), true);
     assert.equal(await evaluate('document.querySelector("[aria-label=热榜数据来源]").textContent.includes("上游榜单超过 24 小时未更新")'), true);
     assert.equal(await evaluate('document.querySelectorAll("[aria-label=热榜数据来源] details[open]").length'), 0);
-    assert.equal(await evaluate('document.querySelectorAll("[aria-label=热榜数据来源] > div").length'), platforms.length);
+    assert.equal(await evaluate('document.querySelectorAll("[data-testid=platform-source-legend] button").length'), platforms.length);
+    const chart = await evaluate('(() => { const svg=document.querySelector("[aria-label=热榜数据来源] svg"); const arcs=Array.from(svg.querySelectorAll("[role=button]")); return {label:svg.getAttribute("aria-label"),arcs:arcs.length,finite:arcs.every(arc=>!/NaN|Infinity/.test(arc.getAttribute("stroke-dasharray"))),totalLength:arcs.reduce((sum,arc)=>sum+Number(arc.getAttribute("stroke-dasharray").split(" ")[0]),0),unavailableArc:arcs.some(arc=>arc.getAttribute("aria-label").startsWith("视频号"))}; })()');
+    assert.equal(chart.label, '平台数据占比，共 ' + availablePlatformCount * 2 + ' 条');
+    assert.equal(chart.arcs, availablePlatformCount); assert.ok(chart.finite); assert.ok(Math.abs(chart.totalLength - 2 * Math.PI * 38) < 0.001); assert.equal(chart.unavailableArc, false);
+    await evaluate('document.querySelector("[aria-label=热榜数据来源] svg [role=button]").dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true}))');
+    await waitFor(window, 'document.querySelector("[data-testid=platform-source-legend] [data-platform=douyin]").getAttribute("aria-pressed") === "true" && document.querySelectorAll("[data-testid=hotspot-card]").length === 2');
+    await evaluate('document.querySelector("[data-testid=platform-source-legend] [data-platform=weibo]").click()');
+    await waitFor(window, 'document.querySelector("[aria-label=热点平台筛选] [aria-pressed=true]")?.textContent === "微博"');
+    await click('全部');
     if (platforms.includes('wechat_channels')) {
       const beforeVideoChannel = requests;
       await click('视频号');
@@ -120,8 +128,8 @@ module.exports = async function trendingSmoke({ window, call, waitFor, LocalProv
       await waitFor(window, 'Math.abs(innerWidth - ' + width + ') <= 1');
       await new Promise(resolve => setTimeout(resolve, 180));
       const layout = await evaluate('(() => { const grid=document.querySelector("[data-testid=trending-results]"); const cards=Array.from(grid.children).map(card => { const r=card.getBoundingClientRect(); return {x:r.x,y:r.y,right:r.right}; }); return {width:innerWidth,columns:getComputedStyle(grid).gridTemplateColumns.split(" ").length,cards,noOverflow:document.documentElement.scrollWidth <= innerWidth}; })()');
-      const sources = await evaluate('(() => { const section=document.querySelector("[aria-label=热榜数据来源]"); const entries=Array.from(section.children).map(entry => { const r=entry.getBoundingClientRect(); return {x:r.x,y:r.y,right:r.right,height:r.height,noOverflow:entry.scrollWidth<=entry.clientWidth+1}; }); const select=document.querySelector("#trending-template").getBoundingClientRect(); const buttons=Array.from(document.querySelectorAll("button")).filter(button => button.textContent.trim() === "全部"); const all=buttons[0].getBoundingClientRect(); return {columns:getComputedStyle(section).gridTemplateColumns.split(" ").length,entries,allCount:buttons.length,allOnLeft:all.right<=select.x && Math.abs(all.y-select.y)<1,allPressed:buttons[0].getAttribute("aria-pressed")}; })()');
-      const sourceColumns = width >= 1280 ? 6 : width >= 768 ? 3 : width >= 640 ? 2 : 1;
+      const sources = await evaluate('(() => { const section=document.querySelector("[aria-label=热榜数据来源]"); const legend=section.querySelector("[data-testid=platform-source-legend]"); const entries=Array.from(legend.children).map(entry => { const r=entry.getBoundingClientRect(); return {x:r.x,y:r.y,right:r.right,height:r.height,noOverflow:entry.scrollWidth<=entry.clientWidth+1}; }); const select=document.querySelector("#trending-template").getBoundingClientRect(); const buttons=Array.from(document.querySelectorAll("button")).filter(button => button.textContent.trim() === "全部"); const all=buttons[0].getBoundingClientRect(); return {columns:getComputedStyle(legend).gridTemplateColumns.split(" ").length,entries,allCount:buttons.length,allOnLeft:all.right<=select.x && Math.abs(all.y-select.y)<1,allPressed:buttons[0].getAttribute("aria-pressed")}; })()');
+      const sourceColumns = width >= 1280 ? 3 : width >= 1024 ? 2 : width >= 640 ? 3 : 2;
       assert.equal(sources.columns, sourceColumns); assert.equal(sources.allCount, 1); assert.ok(sources.allOnLeft, JSON.stringify({width,sources}));
       assert.ok(sources.entries.every(entry => entry.noOverflow && entry.x >= 0 && entry.right <= layout.width + 1), JSON.stringify({width,sources}));
       assert.ok(sources.entries.slice(0,sourceColumns).every(entry => Math.abs(entry.y-sources.entries[0].y)<1), JSON.stringify({width,sources}));
@@ -138,12 +146,15 @@ module.exports = async function trendingSmoke({ window, call, waitFor, LocalProv
       if (width === 375 || width === 1024) fs.writeFileSync(path.join(outputDirectory, 'hotspot-actions-' + width + '.png'), (await window.capturePage()).toPNG());
       layouts.push(layout);
     }
-    const detailsLayout = await evaluate('(() => { const entries=Array.from(document.querySelector("[aria-label=热榜数据来源]").children); const detail=entries.find(entry=>entry.textContent.includes("小红书")).querySelector("details"); const before=entries.map(entry=>entry.getBoundingClientRect().height); detail.querySelector("summary").click(); const after=entries.map(entry=>entry.getBoundingClientRect().height); return {open:detail.open,reasonVisible:detail.innerText.includes("上游榜单超过 24 小时未更新"),independentHeight:entries.every((entry,i)=>entry.contains(detail) ? after[i]>before[i] : after[i]===before[i])}; })()');
-    assert.ok(detailsLayout.open && detailsLayout.reasonVisible && detailsLayout.independentHeight, JSON.stringify(detailsLayout));
+    const detailsLayout = await evaluate('(() => { const section=document.querySelector("[aria-label=热榜数据来源]"); const detail=section.querySelector("details"); const legend=section.querySelector("[data-testid=platform-source-legend]"); const before=legend.getBoundingClientRect().height; detail.querySelector("summary").click(); return {open:detail.open,reasonVisible:detail.innerText.includes("上游榜单超过 24 小时未更新"),sourceNameAndTime:detail.innerText.includes("更新："),legendHeightUnchanged:legend.getBoundingClientRect().height===before}; })()');
+    assert.ok(Object.values(detailsLayout).every(Boolean), JSON.stringify(detailsLayout));
     fs.writeFileSync(path.join(outputDirectory, 'source-details-expanded.png'), (await window.capturePage()).toPNG());
     await evaluate('document.querySelector("[aria-label=热榜数据来源] details[open]").querySelector("summary").click()');
     await click('全部');
     assert.equal(await evaluate('Array.from(document.querySelectorAll("header button")).find(button=>button.textContent.trim()==="全部").getAttribute("aria-pressed")'), 'true');
+    await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>setTimeout(()=>resolve(true),160))))');
+    const pressedStyle = await evaluate('(() => { const selected=Array.from(document.querySelectorAll("header button")).find(button=>button.textContent.trim()==="全部"); const unselected=document.querySelector("[aria-label=热点平台筛选] button"); return {selected:getComputedStyle(selected).backgroundColor,unselected:getComputedStyle(unselected).backgroundColor,weight:getComputedStyle(selected).fontWeight}; })()');
+    assert.notEqual(pressedStyle.selected, pressedStyle.unselected); assert.ok(Number(pressedStyle.weight) >= 600);
     fs.writeFileSync(path.join(outputDirectory, 'trending-board-' + version + '.png'), (await window.capturePage()).toPNG());
     await click(transferPlatformLabel);
     await waitFor(window, 'document.querySelectorAll("[data-testid=hotspot-card]").length === 2');

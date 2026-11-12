@@ -73,6 +73,7 @@ export function Composer({
           }
         }}
       >
+        {dragging && <p role="status" className="px-3.5 pt-3 text-xs font-medium text-accent-foreground">松开鼠标，将文字添加到文案</p>}
         <textarea
           {...props}
           id={fieldId}
@@ -103,7 +104,9 @@ export function Composer({
           style={{ minHeight, maxHeight }}
         />
         <div className="flex min-h-8 items-center justify-between gap-3 px-3.5 pb-2 text-[11px] text-muted-foreground">
-          <span>{busy ? '正在生成，请稍候' : hint || '支持粘贴或拖入文字'}</span>
+          <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">{busy ? '正在生成，请稍候' : hint || '支持粘贴或拖入文字'}
+            {onSubmit && !busy && !props.disabled && <kbd className="rounded border bg-muted px-1.5 py-0.5 font-sans text-[10px] leading-none">Ctrl / ⌘ + Enter</kbd>}
+          </span>
           <span className="shrink-0 tabular-nums">{value.length.toLocaleString()} 字</span>
         </div>
       </div>

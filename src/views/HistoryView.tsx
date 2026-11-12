@@ -253,8 +253,8 @@ export function HistoryView() {
                 <div
                   key={record.id}
                   className={cn(
-                    'group relative rounded-md',
-                    selectedEntry?.id === record.id ? 'bg-accent' : 'hover:bg-muted'
+                    'group relative rounded-md border transition-[border-color,background-color,box-shadow] duration-150',
+                    selectedEntry?.id === record.id ? 'border-primary/30 bg-accent shadow-[inset_3px_0_0_hsl(var(--primary))]' : 'border-transparent hover:border-primary/20 hover:bg-muted hover:shadow-sm'
                   )}
                 >
                   <button
@@ -269,12 +269,12 @@ export function HistoryView() {
                     aria-pressed={selectedEntry?.id === record.id}
                     className="block w-full min-w-0 rounded-md p-3 pr-11 text-left"
                   >
-                    <p className="truncate text-sm font-medium">{record.title}</p>
+                    <p className={cn('truncate text-sm', selectedEntry?.id === record.id ? 'font-semibold text-accent-foreground' : 'font-medium')}>{record.title}</p>
                     <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
                       {record.video?.parsedStructure?.voiceoverFullText || record.video?.rawGeneratedScript || record.image?.body}
                     </p>
                     <p className="mt-3 text-[11px] tabular-nums text-muted-foreground">
-                      {PLATFORM_LABELS[record.platform]}{(record.video?.sourceContent?.sourceHotspot || record.image?.source.sourceHotspot) ? '热点' : ''} ·{' '}
+                      <span className="mr-1 inline-flex rounded-full bg-secondary px-2 py-0.5 font-medium text-secondary-foreground">{PLATFORM_LABELS[record.platform]}{(record.video?.sourceContent?.sourceHotspot || record.image?.source.sourceHotspot) ? '热点' : ''}</span> ·{' '}
                       {formatDateTime(record.createdAt)} · {record.image ? record.image.pages.length + ' 张图文' : (record.video?.durationSec || 0) + ' 秒视频'}
                     </p>
                   </button>

@@ -73,7 +73,7 @@ export function Sidebar() {
             compact ? 'justify-center' : 'px-5'
           )}
         >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-foreground text-card">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-accent-foreground text-primary-foreground shadow-[0_2px_6px_hsl(var(--primary)/0.25)] ring-1 ring-inset ring-white/20">
             <Film size={18} strokeWidth={1.7} />
           </span>
           {!compact && <p className="min-w-0 text-sm font-semibold tracking-tight">视频二创</p>}
@@ -95,7 +95,7 @@ export function Sidebar() {
                     className={cn(
                       'relative flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-left text-sm transition-colors',
                       activeNav === id
-                        ? 'font-medium text-accent-foreground'
+                        ? 'font-semibold text-accent-foreground'
                         : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
                       compact && 'justify-center'
                     )}
@@ -106,7 +106,7 @@ export function Sidebar() {
                   {activeNav === id && (
                     <motion.span
                       layoutId={mobile ? 'mobile-nav' : 'desktop-nav'}
-                      className="absolute inset-0 rounded-md bg-accent"
+                      className="absolute inset-0 rounded-md bg-accent shadow-[inset_3px_0_0_hsl(var(--primary)),inset_0_0_0_1px_hsl(var(--primary)/0.18)]"
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
@@ -117,7 +117,7 @@ export function Sidebar() {
                 <Icon className="relative h-[18px] w-[18px] shrink-0" strokeWidth={1.7} />
                 {!compact && <span className="relative">{label}</span>}
                 {!compact && id === 'history' && historyCount > 0 && (
-                  <span className="relative ml-auto text-xs tabular-nums text-muted-foreground">
+                  <span className={cn('relative ml-auto rounded-full px-2 py-0.5 text-xs tabular-nums', activeNav === id ? 'bg-primary/15 font-semibold text-accent-foreground' : 'bg-secondary text-muted-foreground')}>
                     {historyCount}
                   </span>
                 )}

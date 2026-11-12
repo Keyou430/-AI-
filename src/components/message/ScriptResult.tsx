@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Tabs } from '@base-ui/react/tabs';
-import { Check, Copy, LoaderCircle, ArrowDown, Wand2 } from 'lucide-react';
+import { Check, Copy, LoaderCircle, ArrowDown, Wand2, Clapperboard, Camera, AudioLines, ScanLine } from 'lucide-react';
 import { motion } from 'motion/react';
 import type { ComplianceCheckItem, HistoryRecord, ParsedScriptStructure } from '../../types';
 import { cn } from '../../lib/utils';
@@ -172,11 +172,13 @@ export function ScriptResult({
           className="flex flex-1 items-center justify-center px-6 py-16"
           data-testid="script-empty"
         >
-          <div className="max-w-xs text-center">
-            <p className="text-base font-medium tracking-tight">脚本将在这里呈现</p>
+          <div className="max-w-sm text-center">
+            <span className="empty-state-icon"><Clapperboard className="h-7 w-7" aria-hidden="true" strokeWidth={1.6} /></span>
+            <p className="text-base font-semibold tracking-tight">脚本将在这里呈现</p>
             <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
               先提取链接或输入口播，核对后生成你的二创脚本。
             </p>
+            <ol className="mt-5 flex flex-wrap justify-center gap-2" aria-label="脚本创作流程">{['提取素材', '核对文案', '生成脚本'].map((step, index) => <li key={step} className="workflow-step"><span className="font-semibold tabular-nums text-primary">{index + 1}</span>{step}</li>)}</ol>
           </div>
         </Tabs.Panel>
       ) : (
@@ -203,26 +205,26 @@ export function ScriptResult({
                     <div className="space-y-7">
                       {(busy ? script.shots : script.shots.slice(currentPage, currentPage + 1)).map(
                         (shot) => (
-                          <article key={shot.shotNumber} className="border-b pb-6 last:border-0">
-                            <header className="mb-4 flex items-center gap-3">
-                              <span className="text-xs font-semibold">
+                          <article key={shot.shotNumber} className="surface p-4">
+                            <header className="mb-4 flex flex-wrap items-center gap-3">
+                              <span className="rounded-md bg-primary px-2.5 py-1 text-xs font-semibold tabular-nums text-primary-foreground">
                                 镜头 {String(shot.shotNumber).padStart(2, '0')}
                               </span>
-                              <span className="text-xs tabular-nums text-muted-foreground">
+                              <span className="rounded-full border bg-muted px-2.5 py-1 text-xs tabular-nums text-muted-foreground">
                                 {shot.timeRange}
                               </span>
                             </header>
                             <dl className="space-y-3 text-sm leading-[1.85]">
-                              <div>
-                                <dt className="mb-1 text-xs text-muted-foreground">画面与动作</dt>
+                              <div className="rounded-md border border-primary/10 bg-accent/50 p-3">
+                                <dt className="mb-1 flex items-center gap-1.5 text-xs font-medium text-accent-foreground"><ScanLine className="h-3.5 w-3.5" aria-hidden="true" />画面与动作</dt>
                                 <dd className="break-words">{shot.actionDivision}</dd>
                               </div>
-                              <div>
-                                <dt className="mb-1 text-xs text-muted-foreground">运镜与灯光</dt>
+                              <div className="rounded-md border border-sky-600/10 bg-sky-50/70 p-3">
+                                <dt className="mb-1 flex items-center gap-1.5 text-xs font-medium text-sky-800"><Camera className="h-3.5 w-3.5" aria-hidden="true" />运镜与灯光</dt>
                                 <dd className="break-words">{shot.cameraExecution}</dd>
                               </div>
-                              <div className="border-l-2 border-primary/25 pl-3">
-                                <dt className="mb-1 text-xs text-muted-foreground">
+                              <div className="rounded-md border border-success/10 bg-success/5 p-3">
+                                <dt className="mb-1 flex items-center gap-1.5 text-xs font-medium text-success"><AudioLines className="h-3.5 w-3.5" aria-hidden="true" />
                                   {shot.isAmbientOnly ? '环境音' : '声音'}
                                 </dt>
                                 <dd className="break-words">{shot.audioContent}</dd>

@@ -6,26 +6,26 @@
 
 @layer base {
   :root {
-    --background: 240 10% 98%;
-    --foreground: 240 14% 13%;
+    --background: 240 11% 97%;
+    --foreground: 240 16% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 240 14% 13%;
+    --card-foreground: 240 16% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 14% 13%;
-    --primary: 245 58% 51%;
+    --popover-foreground: 240 16% 11%;
+    --primary: 245 62% 52%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 240 6% 95%;
-    --secondary-foreground: 240 10% 25%;
-    --muted: 240 6% 96%;
-    --muted-foreground: 240 5% 43%;
-    --accent: 245 55% 96%;
-    --accent-foreground: 245 58% 42%;
+    --secondary: 240 8% 94%;
+    --secondary-foreground: 240 12% 20%;
+    --muted: 240 8% 95.5%;
+    --muted-foreground: 240 6% 43%;
+    --accent: 245 60% 95.5%;
+    --accent-foreground: 245 62% 42%;
     --destructive: 0 65% 44%;
     --destructive-foreground: 0 0% 100%;
-    --border: 240 7% 90%;
-    --input: 240 7% 85%;
-    --ring: 245 58% 51%;
-    --sidebar: 240 10% 97%;
+    --border: 240 8% 89%;
+    --input: 240 8% 84%;
+    --ring: 245 62% 52%;
+    --sidebar: 240 12% 96%;
     --success: 155 63% 28%;
     --warning: 30 85% 32%;
     --radius: 0.625rem;
@@ -90,13 +90,16 @@
 
 @layer components {
   .field {
-    @apply w-full min-w-0 rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground transition-colors focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/10 disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60;
+    @apply w-full min-w-0 rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground transition-[border-color,background-color,box-shadow] duration-150 enabled:hover:border-foreground/30 focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/15 disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60;
+  }
+  select.field {
+    @apply cursor-pointer;
   }
   .field-label {
     @apply mb-2 block text-xs font-medium text-muted-foreground;
   }
   .surface {
-    @apply min-w-0 rounded-lg border border-border bg-card;
+    @apply min-w-0 rounded-lg border border-border/90 bg-card shadow-[0_1px_3px_rgba(15,15,30,0.05)];
   }
   .section-title {
     @apply text-sm font-semibold tracking-tight text-foreground;
@@ -105,21 +108,22 @@
     @apply text-xs leading-relaxed text-muted-foreground;
   }
   .disclosure {
-    @apply rounded-md border border-border px-3 py-2 text-xs text-muted-foreground;
+    @apply rounded-md border border-border/90 bg-card/60 px-3 py-2 text-xs text-muted-foreground transition-colors hover:border-foreground/20 open:bg-card;
   }
   .disclosure > summary {
-    @apply cursor-pointer py-1 font-medium text-foreground;
+    @apply -mx-2 cursor-pointer select-none rounded px-2 py-1 font-medium text-foreground transition-colors hover:bg-muted/75 hover:text-accent-foreground;
   }
   .tab-list {
     @apply flex min-w-0 items-center gap-1 overflow-x-auto;
     scrollbar-width: none;
   }
   .tab {
-    @apply relative shrink-0 rounded-md px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground;
+    @apply relative min-h-10 shrink-0 cursor-pointer select-none rounded-md px-3 py-2 text-xs font-medium text-muted-foreground transition-[color,background-color,box-shadow] duration-150 enabled:hover:bg-muted/80 enabled:hover:text-foreground disabled:cursor-not-allowed;
   }
   .tab[data-active],
-  .tab[data-state='active'] {
-    @apply bg-accent text-accent-foreground;
+  .tab[data-state='active'],
+  .tab[aria-selected='true'] {
+    @apply bg-accent font-semibold text-accent-foreground shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.24)] after:absolute after:bottom-0.5 after:left-2.5 after:right-2.5 after:h-0.5 after:rounded-full after:bg-primary;
   }
   .reading-text {
     @apply whitespace-pre-wrap break-words text-sm leading-[1.9] text-foreground;
@@ -129,13 +133,19 @@
     @apply flex items-start gap-2 rounded-md bg-muted px-3 py-2.5 text-xs leading-relaxed text-muted-foreground;
   }
   .composer {
-    @apply overflow-hidden rounded-lg border border-input bg-card transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/10;
+    @apply overflow-hidden rounded-lg border border-input bg-card shadow-sm transition-[border-color,background-color,box-shadow] duration-150 hover:border-foreground/30 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/15;
   }
   .composer[data-dragging='true'] {
-    @apply border-primary bg-accent;
+    @apply border-primary bg-accent ring-2 ring-primary/20;
   }
   .composer[data-busy='true'] {
     @apply border-border bg-muted/50;
+  }
+  .empty-state-icon {
+    @apply mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-primary/15 bg-accent text-primary shadow-[0_3px_12px_hsl(var(--primary)/0.08)] ring-8 ring-primary/5;
+  }
+  .workflow-step {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-primary/10 bg-card px-2.5 py-1 text-[11px] text-muted-foreground;
   }
   .toast-viewport {
     @apply pointer-events-none fixed right-4 z-[100] flex w-[min(400px,calc(100vw-32px))] flex-col gap-2 outline-none;

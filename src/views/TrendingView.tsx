@@ -6,7 +6,7 @@ import { DEFAULT_PROFILES, industryContext } from '../services/trendingService';
 import { HotspotCard } from '../components/trending/HotspotCard';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
-import { formatDateTime } from '../lib/utils';
+import { PlatformSourcePieChart } from '../components/trending/PlatformSourcePieChart';
 import { PLATFORM_LABELS, TRENDING_PLATFORMS, type TrendingFilterTab } from '../../electron/services/trendingTypes';
 
 const TEMPLATES = [
@@ -54,7 +54,7 @@ export const TrendingView: React.FC = () => {
             <Button size="sm" variant={state.activeFilterTab === 'all' ? 'secondary' : 'ghost'}
               aria-pressed={state.activeFilterTab === 'all'} onClick={() => state.setFilterTab('all')}>全部</Button>
             <label className="sr-only" htmlFor="trending-template">选择行业预设</label>
-            <select id="trending-template" value={selectedTemplate} className="h-9 min-w-0 max-w-full rounded-md border bg-background px-2 text-xs"
+            <select id="trending-template" value={selectedTemplate} className="field h-9 w-auto min-w-0 max-w-full px-2 py-1 text-xs"
               onChange={event => { setTag(''); setEditingTags(false); state.selectProfileTemplate(event.target.value); }}>
               <option value="" disabled>{state.profile ? (state.profile.isAutoDetected ? '已分析行业' : '自定义行业') : '选择行业预设'}</option>
               {TEMPLATES.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
@@ -69,18 +69,19 @@ export const TrendingView: React.FC = () => {
         </div>
       </header>
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 md:p-6">
-        <section className="surface space-y-3 p-4" aria-label="行业画像">
+        <div className="surface grid grid-cols-1 items-center gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(380px,460px)] xl:grid-cols-[minmax(0,1fr)_minmax(400px,500px)]">
+        <section className="min-w-0 space-y-3" aria-label="行业画像">
           {state.profile ? <>
-            <p className="text-sm font-medium">{state.profile.primaryIndustry}</p>
-            <p className="muted-copy">{state.profile.isAutoDetected ? (state.profile.analysisMethod === 'ai' ? 'AI 分析' : '规则分析') : '手动行业'} · 已启用 {docs.filter(d => d.enabled).length} 份知识库</p>
+            <p className="text-sm font-semibold">{state.profile.primaryIndustry}</p>
+            <p className="w-fit rounded-full bg-accent px-2.5 py-1 text-[11px] font-medium text-accent-foreground">{state.profile.isAutoDetected ? (state.profile.analysisMethod === 'ai' ? 'AI 分析' : '规则分析') : '手动行业'} · 已启用 {docs.filter(d => d.enabled).length} 份知识库</p>
             <details open={editingTags} onToggle={event => setEditingTags(event.currentTarget.open)}>
-              <summary className="w-fit cursor-pointer text-xs text-muted-foreground">调整行业标签</summary>
+              <summary className="-ml-1.5 w-fit cursor-pointer rounded px-1.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">调整行业标签</summary>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 {state.profile.subCategories.map(value => <span key={value} className="flex items-center gap-1 rounded-md bg-secondary px-2 py-1 text-xs">
                   {value}<button type="button" aria-label={'移除行业标签 ' + value} onClick={() => state.removeCategoryTag(value)}><X className="h-3 w-3" /></button>
                 </span>)}
                 <label className="sr-only" htmlFor="trending-tag">新增行业标签</label>
-                <input id="trending-tag" value={tag} maxLength={100} placeholder="新增行业标签" className="h-8 w-36 rounded-md border bg-background px-2 text-xs"
+                <input id="trending-tag" value={tag} maxLength={100} placeholder="新增行业标签" className="field h-9 w-36 px-2 py-1 text-xs"
                   onChange={event => setTag(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && tag.trim()) { state.addCategoryTag(tag); setTag(''); } }} />
                 <Button size="sm" variant="ghost" disabled={!tag.trim() || state.profile.subCategories.length >= 8}
                   aria-label="添加行业标签" onClick={() => { state.addCategoryTag(tag); setTag(''); }}><Plus /></Button>
@@ -89,24 +90,10 @@ export const TrendingView: React.FC = () => {
           </> : <p className="text-sm">先选择行业预设，或在设置中添加知识库和业务关键词，获取行业推荐。当前可浏览平台热榜。</p>}
           <p className="muted-copy">匹配分用于选题排序；话题与热度来自聚合数据源，创作前请查看来源核实背景。</p>
         </section>
+        <PlatformSourcePieChart sources={state.sources} activeTab={state.activeFilterTab} onSelectPlatform={state.setFilterTab} />
+        </div>
         {state.error && <p role="alert" className="status-note text-destructive">{state.error}</p>}
         {state.analysisNotice && <p role="status" className="status-note">{state.analysisNotice}</p>}
-        <section aria-label="热榜数据来源" className="grid grid-cols-1 items-start gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
-          {state.sources.map(source => <div key={source.platform} className="surface min-w-0 space-y-1 p-3 text-xs">
-            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 font-medium">
-              <span>{PLATFORM_LABELS[source.platform]}</span>
-              <span className={source.status === 'fresh' ? 'text-muted-foreground' : 'text-warning'}>{source.status === 'fresh' ? (source.cached ? '本机缓存' : '已获取') : source.status === 'stale' ? (source.refreshFailed ? '刷新失败' : '来源过期') : '暂不可用'}</span>
-            </p>
-            <p className="flex items-center justify-between gap-2 text-muted-foreground">
-              <span className="min-w-0 truncate" title={source.sourceName}>{source.sourceName}</span><span className="shrink-0">{source.count} 条</span>
-            </p>
-            {source.sourceUpdatedAt && <p className="text-muted-foreground">更新：{formatDateTime(new Date(source.sourceUpdatedAt).toISOString())}</p>}
-            {source.message && <details className="text-warning">
-              <summary className="w-fit cursor-pointer">查看原因</summary>
-              <p className="mt-1 break-words">{source.message}</p>
-            </details>}
-          </div>)}
-        </section>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap gap-1" aria-label="热点平台筛选">
             {TABS.map(tab => <Button key={tab.id} size="sm" variant={state.activeFilterTab === tab.id ? 'secondary' : 'ghost'}
@@ -117,7 +104,7 @@ export const TrendingView: React.FC = () => {
             <div className="relative"><Search className="absolute left-2 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
               <label className="sr-only" htmlFor="trending-search">搜索热点</label>
               <input id="trending-search" value={state.searchQuery} onChange={event => state.setSearchQuery(event.target.value)}
-                placeholder="搜索话题、切入点" className="h-9 w-48 rounded-md border bg-background pl-7 pr-2" />
+                placeholder="搜索话题、切入点" className="field h-9 w-48 py-1 pl-7 pr-2" />
             </div>
           </div>
         </div>

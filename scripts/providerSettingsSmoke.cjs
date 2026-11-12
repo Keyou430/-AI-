@@ -150,7 +150,16 @@ app.on('browser-window-created', (_event, window) => {
       assert.equal(requests.length, 0);
       assert.deepEqual(await call('getProviderSettings'), before);
       assert.equal(await js(field('image', 'imageProtocol') + '.value'), 'seedream');
-      cases.push('预设只填表，不保存、不发请求');
+      const selectedImagePreset = () => js('Array.from(' + form('image') + '.querySelectorAll("[aria-pressed=true]")).map(el=>el.textContent.trim())');
+      assert.deepEqual(await selectedImagePreset(), ['使用 Seedream 配置']);
+      await setField('image', 'imageEndpoint', 'https://images.example/custom');
+      assert.deepEqual(await selectedImagePreset(), []);
+      await click('image', '使用 Seedream 配置');
+      assert.deepEqual(await selectedImagePreset(), ['使用 Seedream 配置']);
+      assert.equal(await js(form('image') + '.querySelector("[role=status]").textContent'), '有未保存修改');
+      const selectedTabStyle = await js('(() => { const tab=document.querySelector("[role=tab][aria-selected=true]"); return {weight:getComputedStyle(tab).fontWeight,line:getComputedStyle(tab,"::after").height}; })()');
+      assert.ok(Number(selectedTabStyle.weight) >= 600); assert.equal(selectedTabStyle.line, '2px');
+      cases.push('预设按当前协议和地址高亮，修改地址取消高亮；配置脏状态和激活分页指示线清晰，预设不保存、不发请求');
       await click('image', '使用 GLM 配置');
       assert.equal(await js(field('image', 'imageEndpoint') + '.value'), 'https://open.bigmodel.cn/api/paas/v4/images/generations');
       assert.equal(await js(field('image', 'imageModel') + '.value'), 'glm-image');

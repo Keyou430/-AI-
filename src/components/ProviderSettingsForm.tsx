@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from './ui/Button';
+import { cn } from '../lib/utils';
 import { Modal } from './ui/Modal';
 import { notifyError, notifySuccess } from './ui/Toast';
 import { useAuthStore } from '../store/useAuthStore';
@@ -51,7 +52,17 @@ function ProviderModuleCard({ module, initial, onBusyChange }: {
         placeholder={secret ? '留空保留同一服务商已保存的密钥' : placeholder}
         onChange={event => update({ [key]: event.target.value })} className="field" />
     </label>;
-  const presetClass = 'rounded-lg border px-3 py-2 text-xs text-accent-foreground disabled:opacity-50';
+  const normalizeAddress = (value: string) => value.trim().replace(/\/+$/, '');
+  const deepseekActive = normalizeAddress(input.llmBaseUrl) === DEEPSEEK_PRESET.llmBaseUrl;
+  const imagePresetActive = (provider: keyof typeof IMAGE_PRESETS) => input.imageProtocol === provider &&
+    normalizeAddress(input.imageEndpoint || '') === normalizeAddress(IMAGE_PRESETS[provider].imageEndpoint);
+  const extractionPresetActive = (provider: 'linkdigest' | 'yaoan' | 'custom') => input.videoParserProvider === provider &&
+    (provider === 'custom' || normalizeAddress(input.videoParserEndpoint) === (provider === 'linkdigest' ? 'https://linkdigest.dev' : 'https://cyanlis.cn'));
+  const presetClass = (active: boolean) => cn(
+    'min-h-10 cursor-pointer rounded-lg border px-3 py-2 text-xs transition-[border-color,background-color,color,box-shadow] duration-150 disabled:cursor-not-allowed disabled:opacity-50',
+    active ? 'border-primary/45 bg-accent font-semibold text-accent-foreground shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.18)]'
+      : 'border-border bg-card text-foreground hover:border-foreground/25 hover:bg-muted/75'
+  );
   return <form data-provider-module={module} className="space-y-4 rounded-xl border border-border p-4 sm:p-5" noValidate onSubmit={async event => {
     event.preventDefault(); setBusy(true); onBusyChange(true); setMessage('');
     try {
@@ -63,19 +74,19 @@ function ProviderModuleCard({ module, initial, onBusyChange }: {
     finally { setBusy(false); onBusyChange(false); }
   }}>
     <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold">{moduleTitles[module]}</h3>
-      <span className="text-xs text-muted-foreground" role="status">{dirty ? '有未保存修改' : configured ? '已配置' : '未配置'}</span>
+      <span className={cn('rounded-full border px-2.5 py-0.5 text-[11px] font-medium', dirty ? 'border-warning/20 bg-warning/10 text-warning' : configured ? 'border-success/20 bg-success/10 text-success' : 'border-border bg-muted text-muted-foreground')} role="status">{dirty ? '有未保存修改' : configured ? '已配置' : '未配置'}</span>
     </div>
     <fieldset disabled={busy} className="space-y-4">
       <div className="flex flex-wrap gap-2" aria-label={moduleTitles[module] + '快捷配置'}>
-        {module === 'llm' && <><button type="button" className={presetClass} onClick={() => update({ ...DEEPSEEK_PRESET,
+        {module === 'llm' && <><button type="button" className={presetClass(deepseekActive)} aria-pressed={deepseekActive} onClick={() => update({ ...DEEPSEEK_PRESET,
           llmApiKey: input.llmBaseUrl.replace(/\/+$/, '') === DEEPSEEK_PRESET.llmBaseUrl ? input.llmApiKey : '' })}>使用 DeepSeek 配置</button>
-          <button type="button" className={presetClass} onClick={() => document.getElementsByName('llmBaseUrl')[0]?.focus()}>自定义接口</button></>}
-        {module === 'image' && <>{(['agnes', 'seedream', 'glm', 'sub2api'] as const).map(provider => <button key={provider} type="button" className={presetClass}
+          <button type="button" className={presetClass(!!input.llmBaseUrl.trim() && !deepseekActive)} aria-pressed={!!input.llmBaseUrl.trim() && !deepseekActive} onClick={() => document.getElementsByName('llmBaseUrl')[0]?.focus()}>自定义接口</button></>}
+        {module === 'image' && <>{(['agnes', 'seedream', 'glm', 'sub2api'] as const).map(provider => <button key={provider} type="button" className={presetClass(imagePresetActive(provider))} aria-pressed={imagePresetActive(provider)}
           onClick={() => imagePreset(provider)}>
           使用 {provider === 'agnes' ? 'Agnes' : provider === 'seedream' ? 'Seedream' : provider === 'glm' ? 'GLM' : 'Sub2API（异步生图）'} 配置</button>)}</>}
-        {module === 'extraction' && <><button type="button" className={presetClass} onClick={() => extractionPreset('linkdigest')}>使用 LinkDigest 配置</button>
-          <button type="button" className={presetClass} onClick={() => extractionPreset('yaoan')}>使用姚安配置</button>
-          <button type="button" className={presetClass} onClick={() => extractionPreset('custom')}>自定义接口</button></>}
+        {module === 'extraction' && <><button type="button" className={presetClass(extractionPresetActive('linkdigest'))} aria-pressed={extractionPresetActive('linkdigest')} onClick={() => extractionPreset('linkdigest')}>使用 LinkDigest 配置</button>
+          <button type="button" className={presetClass(extractionPresetActive('yaoan'))} aria-pressed={extractionPresetActive('yaoan')} onClick={() => extractionPreset('yaoan')}>使用姚安配置</button>
+          <button type="button" className={presetClass(extractionPresetActive('custom'))} aria-pressed={extractionPresetActive('custom')} onClick={() => extractionPreset('custom')}>自定义接口</button></>}
       </div>
       <div className="grid gap-4 md:grid-cols-2">
         {module === 'llm' && <><label className="block space-y-1.5 text-sm">接口类型<input className="field" value="OpenAI 协议" readOnly /></label>
@@ -91,7 +102,7 @@ function ProviderModuleCard({ module, initial, onBusyChange }: {
       </div>
       {module === 'image' && input.imageProtocol === 'glm' && <p className="text-xs text-muted-foreground" data-testid="glm-image-limits">智谱托管 GLM-Image 接口仅支持文字生图，整页提示词最多 1000 字符。如需参考图或沿用当前图，请切换 Agnes／Seedream。</p>}
       {module === 'image' && input.imageProtocol === 'sub2api' && <p className="text-xs text-muted-foreground" data-testid="sub2api-image-info">支持文字生图、参考图与文字一起生成，以及沿用当前图优化。提交后等待后台任务完成；取消仅停止本机等待，服务端任务可能继续执行。</p>}
-      <details className="rounded-lg border border-border p-3 text-sm"><summary className="cursor-pointer font-medium">高级配置</summary>
+      <details className="disclosure p-3 text-sm"><summary>高级配置</summary>
         {module === 'llm' && <p className="mt-3 text-xs text-muted-foreground">使用 OpenAI 格式的对话接口与流式输出。模型名称可填写服务商提供的模型标识。</p>}
         {module === 'image' && <p className="mt-3 text-xs text-muted-foreground">按所选厂商提交图片请求，比例跟随图文草案。
           {input.imageProtocol === 'sub2api' ? 'Sub2API 使用同一 API Key 提交和查询任务，最长等待 30 分钟；完成后下载并保存图片，实际尺寸和质量以服务端结果为准。' : input.imageProtocol === 'glm' ? 'GLM-Image 使用像素尺寸生成图片，图片会下载并保存到本机。' : input.imageProtocol === 'seedream' ? 'Seedream 使用 2K 尺寸，单次最多 10 张参考图；模型须支持 Base64 图片返回。' : 'Agnes 使用 1K 尺寸，支持原帖风格、按页素材和沿用当前图优化。'}</p>}
@@ -115,8 +126,8 @@ function ProviderModuleCard({ module, initial, onBusyChange }: {
       <p className="text-xs text-muted-foreground">快捷预设只填入表单，请保存本设备接口配置后使用。
         {module === 'llm' && '测试模型连接使用当前填写的配置，不会自动保存。'}</p>
       <div className="flex flex-wrap gap-3">
-        <button type="submit" className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50">保存本设备接口配置</button>
-        {module === 'llm' && <button type="button" className="rounded-lg border px-4 py-2 text-sm disabled:opacity-50" onClick={async () => {
+        <Button type="submit" variant="primary">保存本设备接口配置</Button>
+        {module === 'llm' && <Button onClick={async () => {
           setBusy(true); onBusyChange(true); setMessage('');
           try {
             const result = await window.electronAPI?.testProviderModule({ module, config: input });
@@ -124,7 +135,7 @@ function ProviderModuleCard({ module, initial, onBusyChange }: {
             setMessage(result.message || '连接测试成功'); notifySuccess(result.message || '连接测试成功');
           } catch (error) { showError(error instanceof Error ? error.message : '连接测试失败'); }
           finally { setBusy(false); onBusyChange(false); }
-        }}>{busy ? '处理中…' : '测试模型连接'}</button>}
+        }}>{busy ? '处理中…' : '测试模型连接'}</Button>}
       </div>
     </fieldset>
     {message && <p role="status" className="text-xs">{message}</p>}

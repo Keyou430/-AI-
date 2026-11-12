@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Tabs } from '@base-ui/react/tabs';
 import { Menu } from '@base-ui/react/menu';
-import { ClipboardPaste, Download, LoaderCircle, Plus, Save, WandSparkles, X } from 'lucide-react';
+import { ClipboardPaste, Download, LoaderCircle, Plus, Save, WandSparkles, X, NotebookPen, Images } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { useImageTextStore } from '../store/useImageTextStore';
 import { extractAndRoute } from '../services/contentExtraction';
@@ -174,11 +174,6 @@ export function ImageTextView() {
               {tabs.map(value => <Tabs.Tab key={value} value={value} className="tab">{value === 'copy' ? '文案' : value === 'pages' ? activeTab === 'pages' ? '逐图' : '逐图 · 第 ' + (draft.pages.findIndex(p => p.id === page?.id) + 1) + ' 图' : value === 'style' ? '风格' : value === 'assets' ? '素材 ' + draft.references.length : '发布文案'}</Tabs.Tab>)}
             </Tabs.List>
             <div ref={planScroll} className="min-h-0 flex-1 overflow-y-auto p-4" data-testid="image-text-plan-scroll">
-              <div className="mb-4 rounded-md border p-3 text-xs" data-testid="image-text-industry-context">
-                <p className="font-medium">目标行业：{draft.remixContext?.industryProfile?.primaryIndustry || draft.source.sourceHotspot?.industryProfile?.primaryIndustry || (draft.remixContext ? '依据公司业务与知识库' : '尚未绑定，请重新策划')}</p>
-                {!!(draft.remixContext?.industryProfile?.subCategories || draft.source.sourceHotspot?.industryProfile?.subCategories)?.length && <p className="mt-1 break-words text-muted-foreground">行业标签：{(draft.remixContext?.industryProfile?.subCategories || draft.source.sourceHotspot?.industryProfile?.subCategories)?.join('、')}</p>}
-                <p className="mt-1 text-muted-foreground">先分析素材与行业的关联，再生成文案和分页。重新策划应用当前行业，优化沿用本稿行业。</p>
-              </div>
               {!draft.confirmed && <>
                 <Tabs.Panel value="copy" keepMounted className="space-y-4">
                   <TextField label="发布标题" value={draft.title} disabled={busy || uploading} onChange={title => state.updateDraft({ title })} rows={2} />
@@ -217,25 +212,40 @@ export function ImageTextView() {
                 {draft.confirmed && !draft.references.length && <p className="muted-copy">{imageProtocol === 'glm' ? '当前 GLM 根据文字要求重新生成图片；使用参考图请切换 Agnes／Seedream。' : '当前没有参考素材，可在图片优化中按页补传实际场景图。'}</p>}
                 <details className="disclosure"><summary>原帖素材</summary><div className="mt-3 space-y-3"><p className="reading-text">{draft.source.publishedText || draft.source.transcript}</p><ExtractedContentDetails content={draft.source} /></div></details>
               </Tabs.Panel>
-              {!!draft.notices.length && <details key={draft.id} className="mt-4 rounded-md border bg-muted/40 p-3 text-xs" data-testid="image-text-plan-notices">
+              <div className="mt-4 rounded-md border border-primary/15 border-l-[3px] border-l-primary bg-accent/50 p-3 text-xs" data-testid="image-text-industry-context">
+                <p className="font-medium">目标行业：{draft.remixContext?.industryProfile?.primaryIndustry || draft.source.sourceHotspot?.industryProfile?.primaryIndustry || (draft.remixContext ? '依据公司业务与知识库' : '尚未绑定，请重新策划')}</p>
+                {!!(draft.remixContext?.industryProfile?.subCategories || draft.source.sourceHotspot?.industryProfile?.subCategories)?.length && <p className="mt-1 break-words text-muted-foreground">行业标签：{(draft.remixContext?.industryProfile?.subCategories || draft.source.sourceHotspot?.industryProfile?.subCategories)?.join('、')}</p>}
+                <p className="mt-1 text-muted-foreground">先分析素材与行业的关联，再生成文案和分页。重新策划应用当前行业，优化沿用本稿行业。</p>
+              </div>
+              {!!draft.notices.length && <details key={draft.id} className="disclosure mt-4 bg-muted/40 p-3" data-testid="image-text-plan-notices">
                 <summary className="cursor-pointer font-medium">策划说明与核对事项</summary>
                 <ul className="mt-2 list-disc space-y-2 pl-4 text-muted-foreground">{draft.notices.map((notice, index) => <li key={index} className="whitespace-pre-wrap break-words">{notice}</li>)}</ul>
               </details>}
 
             </div>
-            {!draft.confirmed && <footer className="shrink-0 space-y-2 border-t bg-card px-3 py-2 pb-[max(.5rem,env(safe-area-inset-bottom))]">
+            {!draft.confirmed && <footer className="shrink-0 space-y-2 border-t border-primary/15 bg-accent/30 px-3 py-2 pb-[max(.5rem,env(safe-area-inset-bottom))]">
               <div className="flex flex-wrap items-center gap-3"><p className="text-xs">共 {draft.pages.length} 张</p><label className="flex items-center gap-2 text-xs">整套图片比例<select className="field w-auto" title={draft.ratioOrigin} aria-describedby="image-text-ratio-help" value={draft.ratio} disabled={busy || uploading} onChange={e => state.updateDraft({ ratio: e.target.value as ImageTextDraft['ratio'], ratioOrigin: '用户在本次确认环节选择整套比例' })}>{IMAGE_RATIOS.map(r => <option key={r}>{r}</option>)}</select></label></div>
               <span id="image-text-ratio-help" className="sr-only">{draft.ratioOrigin}</span><span id="image-text-confirm-help" className="sr-only">此处确认前不会调用生图接口；确认后无需逐页确认。</span>
               <Button variant="primary" className="w-full whitespace-normal text-center" title="此处确认前不会调用生图接口；确认后无需逐页确认。" aria-describedby="image-text-confirm-help" disabled={busy || uploading || !draft.pages.length} onClick={() => { void state.confirmAndGenerate(); }}>确认文案、张数及比例，开始生成 {draft.pages.length} 张图片</Button>
             </footer>}
           </Tabs.Root> : <>
             <div role="tablist" aria-label="图文编辑分页" className="tab-list shrink-0 border-b px-2 py-2">{planTabs.map((value, index) => <button key={value} role="tab" aria-selected="false" disabled className="tab opacity-45">{['文案','逐图','风格','素材'][index]}</button>)}</div>
-            <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-4" data-testid="image-text-plan-scroll"><p className="muted-copy text-center">提取后，原帖标题、正文和图片文字显示在这里，核对并确认后开始生成。</p></div>
+            <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-4" data-testid="image-text-plan-scroll"><div className="max-w-sm py-8 text-center">
+              <span className="empty-state-icon"><NotebookPen className="h-7 w-7" aria-hidden="true" strokeWidth={1.6} /></span>
+              <p className="text-base font-semibold tracking-tight">从一篇好素材开始</p>
+              <p className="mt-2 muted-copy">提取后，原帖标题、正文和图片文字显示在这里，核对并确认后开始生成。</p>
+              <ol className="mt-5 flex flex-wrap justify-center gap-2" aria-label="图文策划流程">{['提取原帖', '关联行业', '核对策划'].map((step, index) => <li key={step} className="workflow-step"><span className="font-semibold tabular-nums text-primary">{index + 1}</span>{step}</li>)}</ol>
+            </div></div>
           </>}
         </section>
         <section id="image-text-result" aria-label="图文结果" className={cn('surface min-h-0 flex-col overflow-hidden',mobileStep === 'result' ? 'flex' : 'hidden lg:flex')}>{draft ? <ImageTextResult draft={draft} activePageId={activePageId} onSelect={state.selectPage} busy={busy || uploading} onVersion={(pageId,versionId) => { void state.changeVersion(pageId,versionId).catch(report); }} onReview={(pageId,checked) => { void state.markReviewed(pageId,checked).catch(report); }} onOptimize={draft.confirmed ? startOptimize : undefined} /> : <>
           <div className="shrink-0 border-b px-4 py-2"><h2 className="section-title">图片预览</h2></div>
-          <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-4"><div className="flex aspect-[3/4] max-h-[50vh] items-center justify-center rounded-md border border-dashed p-6 text-center" data-testid="image-text-empty"><p className="muted-copy">图片将在这里呈现<br />先提取链接，核对文案、张数与比例，确认后生成整套图片。</p></div></div>
+          <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-4"><div className="w-full max-w-sm rounded-xl border border-dashed border-primary/20 bg-accent/30 px-5 py-10 text-center" data-testid="image-text-empty">
+              <span className="empty-state-icon"><Images className="h-7 w-7" aria-hidden="true" strokeWidth={1.6} /></span>
+              <p className="text-base font-semibold tracking-tight">图片将在这里呈现</p>
+              <p className="mt-2 muted-copy">先提取链接，核对文案、张数与比例，确认后生成整套图片。</p>
+              <ol className="mt-5 flex flex-wrap justify-center gap-2" aria-label="图片生成流程">{['确认草案', '生成图片', '核对导出'].map((step, index) => <li key={step} className="workflow-step"><span className="font-semibold tabular-nums text-primary">{index + 1}</span>{step}</li>)}</ol>
+            </div></div>
         </>}</section>
     </div>
     <Modal open={!!optimization} onOpenChange={open => { if (!open) setOptimization(null); }} busy={uploading || busy} title={optimizedPage ? '图片优化' : '全局优化'}

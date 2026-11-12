@@ -49,7 +49,7 @@ export const WorkbenchView: React.FC = () => {
     isGeneratingScript,
     setIsGeneratingScript,
     generateError,
-    setGenerateError: updateGenerateError,
+    setGenerateError,
     streamingScriptText,
     appendStreamingChunk,
     parsedScript,
@@ -65,10 +65,6 @@ export const WorkbenchView: React.FC = () => {
   const setParseError = (message: string | null) => {
     updateParseError(message);
     if (message) notifyError(message, '链接或素材处理未完成');
-  };
-  const setGenerateError = (message: string | null) => {
-    updateGenerateError(message);
-    if (message) notifyError(message, '脚本操作未完成');
   };
   const acceptPastedLink = (text: string) => {
     setLinkInput(text);
