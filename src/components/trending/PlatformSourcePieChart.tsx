@@ -3,13 +3,13 @@ import type { HotspotPlatformStatus, TrendingFilterTab, TrendingPlatform } from 
 import { PLATFORM_LABELS } from '../../../electron/services/trendingTypes';
 import { cn, formatDateTime } from '../../lib/utils';
 
-const PLATFORM_COLORS: Record<TrendingPlatform, string> = {
-  douyin: 'hsl(245 62% 52%)',
-  xiaohongshu: 'hsl(348 75% 48%)',
-  weibo: 'hsl(28 88% 46%)',
-  zhihu: 'hsl(218 76% 48%)',
-  toutiao: 'hsl(155 62% 36%)',
-  wechat_channels: 'hsl(240 8% 62%)',
+const PLATFORM_BASE_TONES: Record<TrendingPlatform, string> = {
+  douyin: 'hsl(24 10% 14%)',
+  xiaohongshu: 'hsl(24 8% 28%)',
+  weibo: 'hsl(28 7% 42%)',
+  zhihu: 'hsl(32 8% 55%)',
+  toutiao: 'hsl(34 10% 67%)',
+  wechat_channels: 'hsl(36 12% 78%)',
 };
 
 function sourceStatus(source: HotspotPlatformStatus) {
@@ -44,9 +44,9 @@ export function PlatformSourcePieChart({ sources, activeTab, onSelectPlatform }:
         <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90 overflow-visible" role="group" aria-label={'平台数据占比，共 ' + totalCount + ' 条'}>
           <circle cx="50" cy="50" r={radius} fill="none" stroke="hsl(var(--muted))" strokeWidth="14" />
           {segments.map(segment => <circle key={segment.platform} cx="50" cy="50" r={radius} fill="none"
-            stroke={PLATFORM_COLORS[segment.platform]} strokeWidth={highlightedPlatform === segment.platform ? 17 : 14}
+            stroke={highlightedPlatform === segment.platform ? 'hsl(var(--primary))' : PLATFORM_BASE_TONES[segment.platform]} strokeWidth={highlightedPlatform === segment.platform ? 17 : 14}
             strokeDasharray={segment.length + ' ' + (circumference - segment.length)} strokeDashoffset={segment.offset}
-            className="cursor-pointer transition-[stroke-width,opacity] duration-150" role="button" tabIndex={0}
+            className="cursor-pointer transition-[stroke,stroke-width,opacity] duration-150" role="button" tabIndex={0}
             aria-label={PLATFORM_LABELS[segment.platform] + '：' + segment.count + ' 条，占比 ' + Math.round(segment.ratio * 100) + '%，' + sourceStatus(segment)}
             aria-pressed={activeTab === segment.platform}
             onMouseEnter={() => setHoveredPlatform(segment.platform)} onMouseLeave={() => setHoveredPlatform(null)}
@@ -58,8 +58,9 @@ export function PlatformSourcePieChart({ sources, activeTab, onSelectPlatform }:
           </circle>)}
         </svg>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center" aria-hidden="true">
-          <span className="text-lg font-semibold tabular-nums">{highlightedSource?.count ?? totalCount}</span>
+          <span className="font-mono text-lg font-semibold tabular-nums">{highlightedSource?.count ?? totalCount}</span>
           <span className="text-[10px] text-muted-foreground">{highlightedSource ? PLATFORM_LABELS[highlightedSource.platform] : '总条数'}</span>
+          {highlightedSource && <span className="font-mono text-[10px] tabular-nums text-muted-foreground">{totalCount ? Math.round(highlightedSource.count / totalCount * 100) : 0}%</span>}
         </div>
       </div>
       <div className="grid min-w-0 flex-1 grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3" data-testid="platform-source-legend">
@@ -69,10 +70,10 @@ export function PlatformSourcePieChart({ sources, activeTab, onSelectPlatform }:
           onMouseEnter={() => setHoveredPlatform(source.platform)} onMouseLeave={() => setHoveredPlatform(null)}
           onFocus={() => setHoveredPlatform(source.platform)} onBlur={() => setHoveredPlatform(null)}
           className={cn('min-h-11 min-w-0 rounded-md border px-2 py-1.5 text-left text-[11px] transition-[border-color,background-color,box-shadow] duration-150',
-            activeTab === source.platform ? 'border-primary/45 bg-accent shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.18)]'
-              : 'border-border/70 bg-background/50 hover:border-primary/25 hover:bg-muted')}>
-          <span className="flex min-w-0 items-center gap-1 font-medium"><span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: PLATFORM_COLORS[source.platform] }} aria-hidden="true" /><span className="truncate">{PLATFORM_LABELS[source.platform]}</span><span className="ml-auto shrink-0 tabular-nums">{source.count}</span></span>
-          <span className={cn('mt-0.5 block text-[10px]', source.status === 'fresh' ? 'text-muted-foreground' : 'text-warning')}>{sourceStatus(source)}</span>
+            activeTab === source.platform ? 'border-foreground bg-foreground text-card'
+              : highlightedPlatform === source.platform ? 'border-foreground/50 bg-secondary/70' : 'border-border/70 bg-background/50 hover:border-foreground/45 hover:bg-secondary/70')}>
+          <span className="flex min-w-0 items-center gap-1 font-medium"><span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: highlightedPlatform === source.platform || activeTab === source.platform ? 'hsl(var(--primary))' : PLATFORM_BASE_TONES[source.platform] }} aria-hidden="true" /><span className="truncate">{PLATFORM_LABELS[source.platform]}</span><span className="ml-auto shrink-0 tabular-nums">{source.count}</span></span>
+          <span className={cn('mt-0.5 block text-[10px]', activeTab === source.platform ? 'text-card/75' : source.status === 'fresh' ? 'text-muted-foreground' : 'text-warning')}>{sourceStatus(source)}</span>
         </button>)}
       </div>
     </div>

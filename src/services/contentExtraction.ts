@@ -17,7 +17,6 @@ export function routeExtractedContent(source: ParsedVideoInfo, manualKind?: 'vid
     useImageTextStore.getState().setPendingSource(null);
     app.setParsedVideo(source);
     if (source.durationSec > 0) app.setTargetDurationSec(Math.min(180, Math.max(6, Math.round(source.durationSec))));
-    if (!app.userCameraWork.trim() && source.suggestedCameraWork) app.setUserCameraWork(source.suggestedCameraWork);
     app.setActiveNav('workbench');
   }
 }

@@ -69,35 +69,35 @@ export const AccountsView: React.FC = () => {
     }
   };
 
-  return <div className="settings-page min-h-0 flex-1 overflow-auto space-y-6">
+  return <div className="settings-page min-h-0 flex-1 overflow-auto"><div className="mx-auto max-w-3xl space-y-5">
     <div><h1 className="text-xl font-semibold tracking-tight">账号管理</h1>
-      <p className="mt-2 text-sm text-muted-foreground">{mode === 'remote' ? '统一管理员工账号。停用后撤销全部会话，员工端定时校验并锁定。' : '管理本机账号。停用账号后，其后续操作将被拦截。'}</p></div>
+      <p className="mt-1 text-sm text-muted-foreground">{mode === 'remote' ? '统一管理员工账号。停用后撤销全部会话，员工端定时校验并锁定。' : '管理本机账号。停用账号后，其后续操作将被拦截。'}</p></div>
     {error && !resetTarget && !deleteTarget && <p role="alert" className="text-sm text-destructive">{error}</p>}
     {notice && <p role="status" className="text-sm text-success">{notice}</p>}
-    <form onSubmit={create} className="surface p-5 space-y-4">
+    <form onSubmit={create} className="surface space-y-4 p-5 sm:p-6">
       <h2 className="font-semibold">新增账号</h2>
       <fieldset disabled={busy} className="flex flex-wrap items-end gap-3">
-        <label className="grid min-w-0 flex-1 gap-1 text-sm">账号<input name="username" required pattern="[a-zA-Z0-9_.-]{3,50}" maxLength={50} className={inputClass} /></label>
-        <label className="grid min-w-0 flex-1 gap-1 text-sm">姓名<input name="displayName" required maxLength={100} className={inputClass} /></label>
-        <label className="grid min-w-0 flex-1 gap-1 text-sm">初始密码<input name="password" type="password" required minLength={8} maxLength={128} autoComplete="new-password" className={inputClass} /></label>
-        <label className="grid min-w-0 flex-1 gap-1 text-sm">角色<select name="role" className={inputClass}><option value="member">成员</option><option value="admin">管理员</option></select></label>
-        <button className="rounded-lg bg-primary px-4 py-2 text-primary-foreground">新增账号</button>
+        <label className="grid min-w-0 flex-1 basis-40 gap-1.5 text-xs font-medium text-muted-foreground">账号<input name="username" required pattern="[a-zA-Z0-9_.-]{3,50}" maxLength={50} className={inputClass} /></label>
+        <label className="grid min-w-0 flex-1 basis-40 gap-1.5 text-xs font-medium text-muted-foreground">姓名<input name="displayName" required maxLength={100} className={inputClass} /></label>
+        <label className="grid min-w-0 flex-1 basis-40 gap-1.5 text-xs font-medium text-muted-foreground">初始密码<input name="password" type="password" required minLength={8} maxLength={128} autoComplete="new-password" className={inputClass} /></label>
+        <label className="grid min-w-0 flex-1 basis-40 gap-1.5 text-xs font-medium text-muted-foreground">角色<select name="role" className={inputClass}><option value="member">成员</option><option value="admin">管理员</option></select></label>
+        <Button type="submit" variant="primary">新增账号</Button>
       </fieldset>
     </form>
     <div className="overflow-x-auto surface">
-      <table className="w-full text-left text-sm"><thead className="bg-muted text-muted-foreground"><tr>
+      <table className="w-full text-left text-sm"><thead className="bg-surface-muted text-xs text-muted-foreground"><tr>
         {['账号', '姓名', '角色', '状态', '操作'].map((title) => <th key={title} className="p-4">{title}</th>)}
       </tr></thead><tbody>{users.map((user) => <tr key={user.id} className="border-t">
         <td className="p-4">{user.username}</td><td className="p-4">{user.displayName}</td>
-        <td className="p-4">{user.role === 'admin' ? '管理员' : '成员'}</td><td className="p-4">{user.isActive ? '启用' : '停用'}</td>
-        <td className="p-4"><div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          <button disabled={busy || user.username === 'admin' || user.id === currentUser?.id} className="text-accent-foreground disabled:text-slate-400"
+        <td className="p-4">{user.role === 'admin' ? '管理员' : '成员'}</td><td className="p-4"><span className={user.isActive ? 'rounded-md bg-success/10 px-2 py-1 text-xs font-medium text-success' : 'rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground'}>{user.isActive ? '启用' : '停用'}</span></td>
+        <td className="p-4"><div className="flex flex-wrap items-center gap-1">
+          <Button size="sm" variant="ghost" disabled={busy || user.username === 'admin' || user.id === currentUser?.id}
             onClick={() => run(() => window.electronAPI!.setUserActive({ userId: user.id, active: !user.isActive }), '账号状态已更新')}>
-            {user.isActive ? '停用' : '启用'}</button>
-          <button disabled={busy} className="min-h-11 text-accent-foreground" onClick={() => { setError(null); setResetTarget(user); }}>重置密码</button>
-          <button disabled={busy || user.username === 'admin' || user.id === currentUser?.id} className="min-h-11 text-destructive disabled:text-muted-foreground"
+            {user.isActive ? '停用' : '启用'}</Button>
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => { setError(null); setResetTarget(user); }}>重置密码</Button>
+          <Button size="sm" variant="danger" disabled={busy || user.username === 'admin' || user.id === currentUser?.id}
             title={user.username === 'admin' || user.id === currentUser?.id ? '不能删除内置管理员或当前登录账号' : '删除账号'}
-            onClick={() => { setError(null); setDeleteTarget(user); }}>删除</button>
+            onClick={() => { setError(null); setDeleteTarget(user); }}>删除</Button>
           </div>
         </td>
       </tr>)}</tbody></table>
@@ -132,5 +132,5 @@ export const AccountsView: React.FC = () => {
         }}>{busy ? '正在删除…' : '确认删除'}</Button>
       </div>
     </Modal>
-  </div>;
+  </div></div>;
 };

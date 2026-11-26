@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useState, type TextareaHTMLAttributes } from 'react';
+import { useId, useLayoutEffect, useRef, useState, type ReactNode, type TextareaHTMLAttributes } from 'react';
 import { cn } from '../../lib/utils';
 
 interface ComposerProps extends Omit<
@@ -11,6 +11,7 @@ interface ComposerProps extends Omit<
   onSubmit?: () => void;
   busy?: boolean;
   hint?: string;
+  headerAction?: ReactNode;
   minHeight?: number;
   maxHeight?: number;
 }
@@ -21,6 +22,7 @@ export function Composer({
   onSubmit,
   busy = false,
   hint,
+  headerAction,
   minHeight = 160,
   maxHeight = 420,
   className,
@@ -41,17 +43,20 @@ export function Composer({
   }, [value, minHeight, maxHeight]);
   return (
     <div className={cn('min-w-0', className)}>
-      <label htmlFor={fieldId} className="field-label">
-        {label}
-      </label>
+      <div className="mb-1.5 flex min-h-8 items-center justify-between gap-2">
+        <label htmlFor={fieldId} className="text-xs font-medium text-muted-foreground">
+          {label}
+        </label>
+        {headerAction && <div className="flex shrink-0 items-center gap-1">{headerAction}</div>}
+      </div>
       <div
         className="composer"
         data-busy={busy}
-        data-dragging={dragging}
+        data-dragging={dragging && !busy && !props.disabled && !props.readOnly}
         aria-busy={busy}
         onDragOver={(event) => {
           event.preventDefault();
-          if (!busy && !props.disabled) setDragging(true);
+          if (!busy && !props.disabled && !props.readOnly) setDragging(true);
         }}
         onDragLeave={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
@@ -59,7 +64,7 @@ export function Composer({
         onDrop={(event) => {
           event.preventDefault();
           setDragging(false);
-          if (busy || props.disabled) return;
+          if (busy || props.disabled || props.readOnly) return;
           if (event.dataTransfer.files.length) {
             setDropError('文件请在系统设置的知识库中导入。');
             return;
@@ -73,7 +78,7 @@ export function Composer({
           }
         }}
       >
-        {dragging && <p role="status" className="px-3.5 pt-3 text-xs font-medium text-accent-foreground">松开鼠标，将文字添加到文案</p>}
+        {dragging && !busy && !props.disabled && !props.readOnly && <div role="status" className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-accent/90 p-4 text-sm font-medium text-accent-foreground">松开鼠标，将文字添加到文案</div>}
         <textarea
           {...props}
           id={fieldId}
@@ -94,6 +99,7 @@ export function Composer({
               onSubmit &&
               !busy &&
               !props.disabled &&
+              !props.readOnly &&
               value.trim()
             ) {
               event.preventDefault();
@@ -103,11 +109,15 @@ export function Composer({
           className="block w-full resize-none bg-transparent px-3.5 py-3 text-sm leading-[1.85] text-foreground placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed"
           style={{ minHeight, maxHeight }}
         />
-        <div className="flex min-h-8 items-center justify-between gap-3 px-3.5 pb-2 text-[11px] text-muted-foreground">
-          <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">{busy ? '正在生成，请稍候' : hint || '支持粘贴或拖入文字'}
-            {onSubmit && !busy && !props.disabled && <kbd className="rounded border bg-muted px-1.5 py-0.5 font-sans text-[10px] leading-none">Ctrl / ⌘ + Enter</kbd>}
+        <div className="flex min-h-9 items-center justify-between gap-3 border-t border-input bg-secondary/60 px-3.5 py-1.5 text-[11px] text-muted-foreground">
+          <span className="flex min-w-0 items-center gap-2">
+            {busy && <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary motion-safe:animate-pulse" />}
+            <span role={busy ? 'status' : undefined} className="truncate">{busy ? '正在生成，请稍候…' : hint || '支持粘贴或拖入文字'}</span>
           </span>
-          <span className="shrink-0 tabular-nums">{value.length.toLocaleString()} 字</span>
+          <span className="flex shrink-0 items-center gap-2.5 tabular-nums">
+            {onSubmit && !busy && !props.disabled && !props.readOnly && value.trim() && <kbd className="hidden rounded border border-input bg-card px-1.5 py-0.5 font-mono text-[10px] leading-none sm:inline">Ctrl / ⌘ + Enter</kbd>}
+            <span>{value.length.toLocaleString()} 字</span>
+          </span>
         </div>
       </div>
       {dropError && (

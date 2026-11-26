@@ -254,7 +254,7 @@ export function HistoryView() {
                   key={record.id}
                   className={cn(
                     'group relative rounded-md border transition-[border-color,background-color,box-shadow] duration-150',
-                    selectedEntry?.id === record.id ? 'border-primary/30 bg-accent shadow-[inset_3px_0_0_hsl(var(--primary))]' : 'border-transparent hover:border-primary/20 hover:bg-muted hover:shadow-sm'
+                    selectedEntry?.id === record.id ? 'border-foreground bg-card shadow-[inset_2px_0_0_hsl(var(--primary))]' : 'border-transparent hover:border-foreground/40 hover:bg-surface-muted'
                   )}
                 >
                   <button
@@ -269,7 +269,7 @@ export function HistoryView() {
                     aria-pressed={selectedEntry?.id === record.id}
                     className="block w-full min-w-0 rounded-md p-3 pr-11 text-left"
                   >
-                    <p className={cn('truncate text-sm', selectedEntry?.id === record.id ? 'font-semibold text-accent-foreground' : 'font-medium')}>{record.title}</p>
+                    <p className={cn('truncate text-sm', selectedEntry?.id === record.id ? 'font-semibold text-foreground' : 'font-medium')}>{record.title}</p>
                     <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
                       {record.video?.parsedStructure?.voiceoverFullText || record.video?.rawGeneratedScript || record.image?.body}
                     </p>
@@ -280,8 +280,8 @@ export function HistoryView() {
                   </button>
                   <Button
                     size="icon"
-                    variant="danger"
-                    className="absolute right-0 top-1"
+                    variant="ghost"
+                    className="absolute right-0 top-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-visible:bg-destructive/10 focus-visible:text-destructive"
                     aria-label={'删除记录 ' + record.title}
                     onClick={() => {
                       setDeleteError(''); setDeleteInfo(null); setDeleteTarget(record);
@@ -308,7 +308,7 @@ export function HistoryView() {
           )}
         >
           {selectedImage ? <>
-            <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2">
+            <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-divider bg-surface-muted px-4 py-2">
               <Button size="sm" variant="ghost" aria-label="返回列表" className="-ml-2 lg:hidden" onClick={() => setShowDetail(false)}><ArrowLeft /></Button>
               <div className="min-w-0 flex-1">
                 <h2 className="truncate text-sm font-semibold" title={selectedImage.title}>{selectedImage.title}</h2>
@@ -326,7 +326,7 @@ export function HistoryView() {
             <div className="flex min-h-0 flex-1 flex-col"><ImageTextResult draft={selectedImage} activePageId={imagePageId} onSelect={setImagePageId} showPublication /></div>
           </> : selectedRecord ? (
             <>
-              <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2">
+              <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-divider bg-surface-muted px-4 py-2">
                 <Button size="sm" variant="ghost" aria-label="返回列表" className="-ml-2 lg:hidden" onClick={() => setShowDetail(false)}><ArrowLeft /></Button>
                 <div className="min-w-0 flex-1">
                   <h2 className="truncate text-sm font-semibold" title={selectedRecord.title}>{selectedRecord.title}</h2>

@@ -40,15 +40,9 @@ export function ExtractedContentDetails({
       <details data-testid="extraction-details" className="disclosure">
         <summary>
           {imageTextContent ? '图文提取详情' : '提取详情与图片文字'}
-          {details.credits !== undefined && (
-            <span className="ml-2 font-normal text-muted-foreground">{details.credits} 积分</span>
-          )}
+          {details.cached && <span className="ml-2 font-normal text-muted-foreground">缓存结果</span>}
         </summary>
         <div className="mt-4 space-y-5">
-          <p className="muted-copy">
-            本次消耗：{details.credits === undefined ? '厂商未返回' : details.credits + ' 积分'}
-            {details.cached ? '（缓存结果）' : ''}
-          </p>
           {details.coverage && (
             <p className="muted-copy">
               {!imageTextContent && <>已转写 {details.coverage.secondsTranscribed ?? '未知'} /{' '}
@@ -60,10 +54,10 @@ export function ExtractedContentDetails({
           {details.images.length > 0 && (
             <section className="space-y-4">
               <h4 className="text-xs font-medium text-foreground">图片文字与描述</h4>
-              <p className="muted-copy">编号按接口返回顺序，未独立验证原帖顺序；空项保留。</p>
+              <p className="muted-copy">图片按返回顺序显示。</p>
               {details.images.map((image, index) => (
-                <div key={index} data-testid="image-ocr" className="space-y-2 border-t pt-3">
-                  <h5 className="text-xs font-medium text-foreground">第 {index + 1} 张</h5>
+                <div key={index} data-testid="image-ocr" className="space-y-2 rounded-md border border-divider bg-surface-muted p-3">
+                  <h5 className="text-xs font-medium tabular-nums text-muted-foreground">第 {index + 1} 张</h5>
                   <p className="reading-text">{image.ocr || '未返回图片文字'}</p>
                   {image.description && (
                     <p className="text-xs leading-relaxed text-muted-foreground">

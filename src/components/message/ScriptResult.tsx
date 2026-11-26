@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Tabs } from '@base-ui/react/tabs';
-import { Check, Copy, LoaderCircle, ArrowDown, Wand2, Clapperboard, Camera, AudioLines, ScanLine } from 'lucide-react';
+import { Check, Copy, LoaderCircle, ArrowDown, Wand2, Camera, AudioLines, ScanLine } from 'lucide-react';
 import { motion } from 'motion/react';
 import type { ComplianceCheckItem, HistoryRecord, ParsedScriptStructure } from '../../types';
-import { cn } from '../../lib/utils';
 import { ExtractedContentDetails } from '../ExtractedContentDetails';
 import { getEditableSourceText, isImageTextContent } from '../../lib/extractedContent';
 import { Button } from '../ui/Button';
+import { ViewfinderEmptyState } from '../ui/ViewfinderEmptyState';
 import { getScriptOutputText, outputTabs, type OutputTab } from '../../lib/scriptOutput';
 
 interface ScriptResultProps {
@@ -67,6 +67,8 @@ export function ScriptResult({
     if (busy) follow.current = true;
   }, [busy]);
   const hasText = !!text.trim();
+  const pendingChecks = checks.filter((item) => !item.passed);
+  const passedChecks = checks.filter((item) => item.passed);
   return (
     <Tabs.Root
       value={tab}
@@ -169,17 +171,16 @@ export function ScriptResult({
       {!hasText && !busy ? (
         <Tabs.Panel
           value={tab}
-          className="flex flex-1 items-center justify-center px-6 py-16"
+          className="flex min-h-0 flex-1 overflow-y-auto p-3"
           data-testid="script-empty"
         >
-          <div className="max-w-sm text-center">
-            <span className="empty-state-icon"><Clapperboard className="h-7 w-7" aria-hidden="true" strokeWidth={1.6} /></span>
-            <p className="text-base font-semibold tracking-tight">脚本将在这里呈现</p>
-            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              先提取链接或输入口播，核对后生成你的二创脚本。
-            </p>
-            <ol className="mt-5 flex flex-wrap justify-center gap-2" aria-label="脚本创作流程">{['提取素材', '核对文案', '生成脚本'].map((step, index) => <li key={step} className="workflow-step"><span className="font-semibold tabular-nums text-primary">{index + 1}</span>{step}</li>)}</ol>
-          </div>
+          <ViewfinderEmptyState
+            status="分镜监视器 · 待机"
+            title="脚本将在这里呈现"
+            description="先提取链接或输入口播，核对后生成你的二创脚本。"
+            stepsLabel="脚本创作流程"
+            steps={['提取素材', '核对台词', '生成分镜']}
+          />
         </Tabs.Panel>
       ) : (
         <>
@@ -187,7 +188,7 @@ export function ScriptResult({
             <div
               ref={scroll}
               data-testid="script-result-scroll"
-              className="h-full overflow-y-auto px-4 py-5 sm:px-6"
+              className="script-result-scroll h-full overflow-y-auto px-4 py-5 sm:px-6"
               onScroll={() => {
                 const el = scroll.current;
                 if (!el) return;
@@ -198,33 +199,33 @@ export function ScriptResult({
               <Tabs.Panel value="storyboard" className="focus-visible:outline-offset-[-2px]">
                 {script?.shots.length ? (
                   <>
-                    <p className="mb-6 text-xs tabular-nums text-muted-foreground">
+                    <p className="mb-4 text-xs tabular-nums text-muted-foreground">
                       {script.shots.length} 个镜头 <span className="mx-2 text-border">/</span>
                       {script.totalDurationSec || targetDuration} 秒
                     </p>
-                    <div className="space-y-7">
+                    <div className="space-y-4">
                       {(busy ? script.shots : script.shots.slice(currentPage, currentPage + 1)).map(
                         (shot) => (
-                          <article key={shot.shotNumber} className="surface p-4">
-                            <header className="mb-4 flex flex-wrap items-center gap-3">
-                              <span className="rounded-md bg-primary px-2.5 py-1 text-xs font-semibold tabular-nums text-primary-foreground">
+                          <article key={shot.shotNumber} className="surface overflow-hidden">
+                            <header className="flex items-stretch border-b border-input bg-secondary/50">
+                              <span className="inline-flex shrink-0 items-center bg-foreground px-4 py-3 font-mono text-xs font-semibold tabular-nums text-card">
                                 镜头 {String(shot.shotNumber).padStart(2, '0')}
                               </span>
-                              <span className="rounded-full border bg-muted px-2.5 py-1 text-xs tabular-nums text-muted-foreground">
+                              <span className="inline-flex items-center px-4 py-3 font-mono text-xs tabular-nums tracking-wider text-muted-foreground">
                                 {shot.timeRange}
                               </span>
                             </header>
-                            <dl className="space-y-3 text-sm leading-[1.85]">
-                              <div className="rounded-md border border-primary/10 bg-accent/50 p-3">
-                                <dt className="mb-1 flex items-center gap-1.5 text-xs font-medium text-accent-foreground"><ScanLine className="h-3.5 w-3.5" aria-hidden="true" />画面与动作</dt>
+                            <dl className="shot-fields grid divide-y divide-border text-sm leading-[1.85]">
+                              <div className="min-w-0 p-4">
+                                <dt className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><ScanLine className="h-3.5 w-3.5" aria-hidden="true" />画面与动作</dt>
                                 <dd className="break-words">{shot.actionDivision}</dd>
                               </div>
-                              <div className="rounded-md border border-sky-600/10 bg-sky-50/70 p-3">
-                                <dt className="mb-1 flex items-center gap-1.5 text-xs font-medium text-sky-800"><Camera className="h-3.5 w-3.5" aria-hidden="true" />运镜与灯光</dt>
+                              <div className="min-w-0 p-4">
+                                <dt className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><Camera className="h-3.5 w-3.5" aria-hidden="true" />运镜与灯光</dt>
                                 <dd className="break-words">{shot.cameraExecution}</dd>
                               </div>
-                              <div className="rounded-md border border-success/10 bg-success/5 p-3">
-                                <dt className="mb-1 flex items-center gap-1.5 text-xs font-medium text-success"><AudioLines className="h-3.5 w-3.5" aria-hidden="true" />
+                              <div className="min-w-0 p-4">
+                                <dt className="mb-2 flex items-center gap-1.5 border-l-2 border-primary pl-2 text-xs font-medium text-foreground"><AudioLines className="h-3.5 w-3.5" aria-hidden="true" />
                                   {shot.isAmbientOnly ? '环境音' : '声音'}
                                 </dt>
                                 <dd className="break-words">{shot.audioContent}</dd>
@@ -333,32 +334,32 @@ export function ScriptResult({
                 </Tabs.Panel>
               )}
               {hasText && !busy && checks.length > 0 && (
-                <details className="disclosure mt-8">
+                <details className="disclosure mt-6">
                   <summary>
                     格式与内容检查{' '}
-                    <span className="ml-2 font-normal text-muted-foreground">
-                      {checks.filter((item) => item.passed).length}/{checks.length}
-                    </span>
+                    <span className="ml-2 font-normal tabular-nums text-muted-foreground">{passedChecks.length}/{checks.length}</span>{' '}
+                    {pendingChecks.length > 0 && <span className="ml-2 text-warning">{pendingChecks.length} 项待核对</span>}
                   </summary>
                   <p className="mt-2 muted-copy">自动检查仅供参考，发布前请人工核对。</p>
-                  <ul className="mt-3 space-y-3">
-                    {checks.map((check) => (
-                      <li key={check.id}>
-                        <p
-                          className={cn(
-                            'text-xs font-medium',
-                            check.passed ? 'text-foreground' : 'text-warning'
-                          )}
-                        >
-                          {check.passed ? '通过 · ' : '待核对 · '}
-                          {check.label}
-                        </p>
-                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                          {check.detail}
-                        </p>
+                  {pendingChecks.length > 0 && <ul className="mt-3 space-y-2">
+                    {pendingChecks.map((check) => (
+                      <li key={check.id} className="rounded-md border border-warning/15 bg-warning/5 px-3 py-2">
+                        <p className="text-xs font-medium text-warning">待核对 · {check.label}</p>
+                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{check.detail}</p>
                       </li>
                     ))}
-                  </ul>
+                  </ul>}
+                  {passedChecks.length > 0 && <details className="mt-3 border-t border-divider pt-2">
+                    <summary className="w-fit cursor-pointer py-1 text-xs text-muted-foreground">已通过 {passedChecks.length} 项</summary>
+                    <ul className="mt-2 space-y-2">
+                      {passedChecks.map((check) => (
+                        <li key={check.id} className="rounded-md bg-surface-muted px-3 py-2">
+                          <p className="text-xs font-medium">通过 · {check.label}</p>
+                          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{check.detail}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>}
                 </details>
               )}
             </div>

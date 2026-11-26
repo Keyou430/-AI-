@@ -75,11 +75,11 @@ export function SettingsView() {
       }}
       className="flex min-h-0 flex-1 flex-col bg-background"
     >
-      <header className="shrink-0 border-b px-4 pt-4 md:px-6 md:pt-6 lg:px-8 lg:pt-8">
+      <header className="shrink-0 border-b bg-card px-4 pt-4 md:px-6 lg:px-8">
         <div className="mx-auto max-w-3xl">
           <h1 className="text-xl font-semibold tracking-tight">设置</h1>
           <p className="mt-1 text-sm text-muted-foreground">管理内容背景、接口密钥和本设备存储。</p>
-          <Tabs.List aria-label="设置分类" className="tab-list mt-5 pb-3">
+          <Tabs.List aria-label="设置分类" className="tab-list mt-4 pb-2">
             <Tabs.Tab value="content" className="tab min-h-11">
               内容设置
             </Tabs.Tab>
@@ -223,7 +223,7 @@ export function SettingsView() {
                 }}
                 className={cn(
                   'rounded-md border border-dashed px-4 py-5 text-center text-xs text-muted-foreground',
-                  dragging && 'border-primary bg-accent'
+                  dragging && 'border-foreground bg-secondary'
                 )}
               >
                 <p>{dragging ? '松开以导入文档' : '将文档拖入这里'}</p>

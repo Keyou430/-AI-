@@ -34,3 +34,19 @@ test('类型不明时保留素材供人工指定，选择后不重复提取；�
   useAppStore.setState({ activeNav: 'image-text' });
   routeExtractedContent({ ...source, contentKind: 'video', durationSec: 18 }); assert.equal(useAppStore.getState().activeNav, 'workbench');
 });
+
+test('视频提取不自动填入建议运镜，保留手动输入且清空后不再补填', () => {
+  reset();
+  const source = { ...imageTextFixture().source, contentKind: 'video' as const, durationSec: 18,
+    transcript: '原视频口播', suggestedCameraWork: '前3秒黄金钩子破题吸引眼球，中段对比打消疑虑，尾段号召互动转化。' };
+  assert.equal(useAppStore.getState().userCameraWork, '');
+  routeExtractedContent(source);
+  assert.equal(useAppStore.getState().userCameraWork, '');
+  assert.equal(useAppStore.getState().parsedVideo?.suggestedCameraWork, source.suggestedCameraWork);
+  useAppStore.getState().setUserCameraWork('近景俯拍、特写推进');
+  routeExtractedContent({ ...source, suggestedCameraWork: '环绕镜头' });
+  assert.equal(useAppStore.getState().userCameraWork, '近景俯拍、特写推进');
+  useAppStore.getState().setUserCameraWork('');
+  routeExtractedContent(source);
+  assert.equal(useAppStore.getState().userCameraWork, '');
+});

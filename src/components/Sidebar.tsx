@@ -69,19 +69,20 @@ export function Sidebar() {
       <>
         <div
           className={cn(
-            'flex h-20 shrink-0 items-center gap-3',
+            'flex h-16 shrink-0 items-center gap-3',
             compact ? 'justify-center' : 'px-5'
           )}
         >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-accent-foreground text-primary-foreground shadow-[0_2px_6px_hsl(var(--primary)/0.25)] ring-1 ring-inset ring-white/20">
+          <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-foreground text-card shadow-[inset_0_1px_0_hsl(var(--card)/0.2)]">
             <Film size={18} strokeWidth={1.7} />
+            <span aria-hidden="true" className="absolute right-1.5 top-1.5 h-1 w-1 rounded-full bg-primary" />
           </span>
           {!compact && <p className="min-w-0 text-sm font-semibold tracking-tight">视频二创</p>}
         </div>
         <nav
           id={mobile ? 'mobile-navigation' : 'desktop-navigation'}
           aria-label="主导航"
-          className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-y-contain px-3 pt-3"
+          className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-y-contain px-3 pt-2"
         >
           {items.map(({ id, label, icon: Icon }) => (
             <Tooltip.Root key={id} disabled={!compact}>
@@ -95,7 +96,7 @@ export function Sidebar() {
                     className={cn(
                       'relative flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-left text-sm transition-colors',
                       activeNav === id
-                        ? 'font-semibold text-accent-foreground'
+                        ? 'font-semibold text-foreground'
                         : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
                       compact && 'justify-center'
                     )}
@@ -106,7 +107,7 @@ export function Sidebar() {
                   {activeNav === id && (
                     <motion.span
                       layoutId={mobile ? 'mobile-nav' : 'desktop-nav'}
-                      className="absolute inset-0 rounded-md bg-accent shadow-[inset_3px_0_0_hsl(var(--primary)),inset_0_0_0_1px_hsl(var(--primary)/0.18)]"
+                      className="absolute inset-0 rounded-md bg-card shadow-[inset_2px_0_0_hsl(var(--primary)),inset_0_0_0_1px_hsl(var(--foreground)/0.1),0_1px_2px_hsl(var(--foreground)/0.04)]"
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
@@ -117,7 +118,7 @@ export function Sidebar() {
                 <Icon className="relative h-[18px] w-[18px] shrink-0" strokeWidth={1.7} />
                 {!compact && <span className="relative">{label}</span>}
                 {!compact && id === 'history' && historyCount > 0 && (
-                  <span className={cn('relative ml-auto rounded-full px-2 py-0.5 text-xs tabular-nums', activeNav === id ? 'bg-primary/15 font-semibold text-accent-foreground' : 'bg-secondary text-muted-foreground')}>
+                  <span className={cn('relative ml-auto min-w-6 rounded-md px-1.5 py-0.5 text-center text-[11px] tabular-nums', activeNav === id ? 'bg-secondary font-semibold text-foreground' : 'bg-secondary text-muted-foreground')}>
                     {historyCount}
                   </span>
                 )}
@@ -132,7 +133,7 @@ export function Sidebar() {
             </Tooltip.Root>
           ))}
         </nav>
-        <div className="mx-3 mb-4 shrink-0 border-t pt-3">
+        <div className="mx-3 mb-3 shrink-0 border-t border-divider pt-3">
           {!mobile && (
             <Button
               variant="ghost"
@@ -147,7 +148,7 @@ export function Sidebar() {
               {!compact && '收起侧栏'}
             </Button>
           )}
-          <div className={cn('flex items-center gap-2', compact ? 'justify-center' : 'px-1')}>
+          <div className={cn('flex items-center gap-2 py-1', compact ? 'justify-center' : 'px-1')}>
             {!compact && (
               <>
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-medium">

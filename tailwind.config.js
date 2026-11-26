@@ -9,6 +9,8 @@ module.exports = {
     extend: {
       colors: {
         border: "hsl(var(--border))",
+        divider: "hsl(var(--border-subtle))",
+        surface: { muted: "hsl(var(--surface-muted))" },
         sidebar: "hsl(var(--sidebar))",
         success: "hsl(var(--success))",
         warning: "hsl(var(--warning))",

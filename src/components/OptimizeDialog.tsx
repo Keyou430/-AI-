@@ -65,7 +65,7 @@ export function OptimizeDialog({
     >
       <form
         id="optimize-form"
-        className="space-y-4"
+        className="space-y-3"
         onSubmit={(event) => {
           event.preventDefault();
           submit();
@@ -86,7 +86,8 @@ export function OptimizeDialog({
             <Button
               key={prompt}
               size="sm"
-              variant="ghost"
+              variant="secondary"
+              className="min-h-9 rounded-full border-divider bg-surface-muted px-3 text-xs"
               disabled={isGenerating}
               onClick={() => setInstruction((value) => (value ? value + '；' + prompt : prompt))}
             >
@@ -95,7 +96,7 @@ export function OptimizeDialog({
           ))}
         </div>
       </form>
-      <div className="mt-5">
+      <div className="mt-4 border-t border-divider pt-4">
         <VersionHistory
           versions={refinementHistory}
           currentScript={currentScript}

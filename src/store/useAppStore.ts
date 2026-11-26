@@ -38,6 +38,10 @@ function discardStoredWorkbench(stored: any) {
   delete retained.parsedVideo;
   delete retained.editedTranscript;
   delete retained.editedVisualSummary;
+  if (typeof retained.userCameraWork === 'string' &&
+    retained.userCameraWork.trim() === '前3秒黄金钩子破题吸引眼球，中段对比打消疑虑，尾段号召互动转化。') {
+    retained.userCameraWork = '';
+  }
   return retained;
 }
 

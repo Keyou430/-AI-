@@ -41,7 +41,7 @@ module.exports = async ({ window, call, waitFor, manualRecord }) => {
     for (const text of excludes) assert.ok(!copied.includes(text), '复制混入：' + text);
     return copied;
   };
-  const verify = async (context, copyLabel) => {
+  const verify = async (context, copyLabel, hasChecks = false) => {
     await tab('拍摄脚本');
     await waitFor(window, 'document.querySelector("select[aria-label=选择镜头]")?.options.length === 9');
     await choose(0);
@@ -72,6 +72,43 @@ module.exports = async ({ window, call, waitFor, manualRecord }) => {
     assert.ok(voice.includes('今天讲三个坑')); assert.ok(voice.includes('先把挑单和搬运说明白。'));
     assert.ok(voice.includes('把这些细节做好，再开始你的第一单。'));
     assert.ok(!voice.includes('均为环境音'));
+    const voiceDetails = await evaluate(() => {
+      const selectedTab = document.querySelector('[aria-label=脚本视图] [aria-selected=true]');
+      const panel = document.getElementById(selectedTab.getAttribute('aria-controls'));
+      const detail = Array.from(panel.querySelectorAll('details')).find(el => el.querySelector('summary')?.textContent.trim() === '分镜声音明细');
+      if (!detail) return { exists:false };
+      const collapsed = !detail.open;
+      detail.open = true;
+      const result = { exists:true, collapsed, speech:detail.innerText.includes('今天讲三个坑'), ambient:detail.innerText.includes('关门声与展厅背景声。') };
+      detail.open = false;
+      return result;
+    });
+    assert.ok(Object.values(voiceDetails).every(Boolean), JSON.stringify(voiceDetails));
+    const compliance = await evaluate(() => {
+      const root = document.querySelector('[data-testid=script-result-scroll]');
+      const panels = Array.from(root.querySelectorAll('details')).filter(el => el.querySelector(':scope > summary')?.textContent.trim().startsWith('格式与内容检查'));
+      if (!panels.length) return { count:0 };
+      const detail = panels[0];
+      const summary = detail.querySelector(':scope > summary');
+      const [passed, total] = summary.querySelector('span').textContent.split('/').map(Number);
+      const collapsed = !detail.open;
+      detail.open = true;
+      const pendingRows = Array.from(detail.querySelector(':scope > ul')?.children || []);
+      const passedDetail = detail.querySelector('details');
+      const result = { count:panels.length, passed, total, pending:pendingRows.length, collapsed,
+        pendingFirst:pendingRows.every(el => el.querySelector('p')?.textContent.startsWith('待核对 · ')),
+        pendingBadge:summary.textContent.includes('项待核对') === (pendingRows.length > 0),
+        passedCollapsed:passed > 0 ? !!passedDetail && !passedDetail.open && passedDetail.querySelector('summary').textContent.includes('已通过 ' + passed + ' 项') : !passedDetail };
+      detail.open = false;
+      return result;
+    });
+    assert.equal(compliance.count, hasChecks ? 1 : 0, JSON.stringify(compliance));
+    if (hasChecks) {
+      assert.equal(compliance.total, 9);
+      assert.equal(compliance.passed + compliance.pending, compliance.total);
+      assert.ok(compliance.collapsed && compliance.pendingFirst && compliance.pendingBadge && compliance.passedCollapsed, JSON.stringify(compliance));
+      checks.push(context + '：待核对项前置、通过项默认收起，口播明细与合规面板分离');
+    }
     const copiedVoice = await copy(copyLabel('口播稿'), ['今天讲三个坑', '先把挑单和搬运说明白。', '把这些细节做好，再开始你的第一单。', '分镜声音明细', '关门声与展厅背景声。'], ['主光使用展厅顶灯']);
     assert.ok(!copiedVoice.split('分镜声音明细')[0].includes('关门声与展厅背景声。'));
     checks.push(context + '：完整口播、换行保留、分镜声音明细');
@@ -90,13 +127,13 @@ module.exports = async ({ window, call, waitFor, manualRecord }) => {
     await verify('旧历史空缓存恢复', () => '复制当前标签内容');
     await evaluate(() => Array.from(document.querySelectorAll('button')).find(el => el.textContent.trim() === '重新编辑').click());
     await waitFor(window, 'document.querySelector("[data-testid=editable-transcript]")?.value === "中文九镜头验收口播"');
-    await verify('工作台重新编辑', name => '复制' + name);
+    await verify('工作台重新编辑', name => '复制' + name, true);
     const stored = (await call('listHistoryFromDB')).records.find(item => item.id === record.id);
     assert.equal(stored.parsedStructure.shots.length, 0);
     assert.equal(stored.rawGeneratedScript, raw);
     checks.push('只读恢复：数据库原文和旧缓存未改写');
     await tab('拍摄脚本'); await choose(0);
-    const evidenceDirectory = path.join(__dirname, '../release/script-parsing-smoke');
+    const evidenceDirectory = process.env.REMIX_SMOKE_OUTPUT ? path.join(process.env.REMIX_SMOKE_OUTPUT, 'script-parsing') : path.join(__dirname, '../release/script-parsing-smoke');
     fs.mkdirSync(evidenceDirectory, { recursive: true });
     fs.writeFileSync(path.join(evidenceDirectory, 'result.json'), JSON.stringify({ passed: true, checkedAt: new Date().toISOString(), checks }, null, 2));
     console.log('中文分镜桌面验收通过：' + checks.join('；'));

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Tabs } from '@base-ui/react/tabs';
 import { Menu } from '@base-ui/react/menu';
-import { ClipboardPaste, Download, LoaderCircle, Plus, Save, WandSparkles, X, NotebookPen, Images } from 'lucide-react';
+import { ClipboardPaste, Download, LoaderCircle, Plus, Save, WandSparkles, X } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { useImageTextStore } from '../store/useImageTextStore';
 import { extractAndRoute } from '../services/contentExtraction';
@@ -15,6 +15,7 @@ import { ImageTextReferences } from '../components/imageText/ImageTextReferences
 import { ImageTextResult } from '../components/imageText/ImageTextResult';
 import { ExtractedContentDetails } from '../components/ExtractedContentDetails';
 import { Button } from '../components/ui/Button';
+import { ViewfinderEmptyState } from '../components/ui/ViewfinderEmptyState';
 import { Modal } from '../components/ui/Modal';
 import { notifyError, notifySuccess } from '../components/ui/Toast';
 import { creationGrid, cn } from '../lib/utils';
@@ -26,12 +27,12 @@ type ImageTextTab = (typeof planTabs)[number] | (typeof confirmedTabs)[number];
 function TextField({ label, value, onChange, rows = 3, disabled = false, testId }: {
   label: string; value: string; onChange: (value: string) => void; rows?: number; disabled?: boolean; testId?: string;
 }) {
-  return <label className="block text-xs font-medium">{label}<textarea data-testid={testId} className="field mt-1.5 resize-y" rows={rows} value={value} disabled={disabled} onChange={e => onChange(e.target.value)} /></label>;
+  return <label className="block text-xs font-medium text-muted-foreground">{label}<textarea data-testid={testId} className="field mt-1.5 resize-y leading-relaxed" rows={rows} value={value} disabled={disabled} onChange={e => onChange(e.target.value)} /></label>;
 }
 function TagsField({ tags, onChange, disabled = false }: { tags: string[]; onChange: (tags: string[]) => void; disabled?: boolean }) {
   const [text, setText] = useState(tags.join(' '));
   useEffect(() => { setText(current => current.split(/\s+/).filter(Boolean).join(' ') === tags.join(' ') ? current : tags.join(' ')); }, [tags]);
-  return <label className="block text-xs font-medium">话题（空格分隔）<textarea className="field mt-1.5 resize-y" rows={2} value={text} disabled={disabled}
+  return <label className="block text-xs font-medium text-muted-foreground">话题（空格分隔）<textarea className="field mt-1.5 resize-y leading-relaxed" rows={2} value={text} disabled={disabled}
     onChange={event => { setText(event.target.value); onChange(event.target.value.split(/\s+/).filter(Boolean)); }} /></label>;
 }
 export function ImageTextView() {
@@ -134,7 +135,7 @@ export function ImageTextView() {
   const referenceOptions = (references: ImageReference[], selected: string[], change: (ids: string[]) => void) => references.filter(r => r.kind === 'scene').map(ref =>
     <label className="flex items-center gap-2 text-xs" key={ref.id}><input type="checkbox" checked={selected.includes(ref.id)} disabled={!supportsImageReferences && !selected.includes(ref.id)} onChange={e => change(e.target.checked ? [...selected, ref.id] : selected.filter(id => id !== ref.id))} />{ref.name} · 保留关键外观</label>);
   return <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
-    <header className="shrink-0 space-y-2 border-b bg-card px-4 py-3 md:px-6">
+    <header className="shrink-0 space-y-2 border-b bg-card px-4 py-2.5 md:px-6">
       <div className="flex items-center gap-3 overflow-x-auto" data-testid="image-text-topbar">
         <h1 className="shrink-0 whitespace-nowrap text-sm font-semibold">小红书图文二创</h1>
         <form className="flex min-w-64 flex-1 items-center gap-2" onSubmit={e => { e.preventDefault(); void extract(); }}>
@@ -212,10 +213,9 @@ export function ImageTextView() {
                 {draft.confirmed && !draft.references.length && <p className="muted-copy">{imageProtocol === 'glm' ? '当前 GLM 根据文字要求重新生成图片；使用参考图请切换 Agnes／Seedream。' : '当前没有参考素材，可在图片优化中按页补传实际场景图。'}</p>}
                 <details className="disclosure"><summary>原帖素材</summary><div className="mt-3 space-y-3"><p className="reading-text">{draft.source.publishedText || draft.source.transcript}</p><ExtractedContentDetails content={draft.source} /></div></details>
               </Tabs.Panel>
-              <div className="mt-4 rounded-md border border-primary/15 border-l-[3px] border-l-primary bg-accent/50 p-3 text-xs" data-testid="image-text-industry-context">
-                <p className="font-medium">目标行业：{draft.remixContext?.industryProfile?.primaryIndustry || draft.source.sourceHotspot?.industryProfile?.primaryIndustry || (draft.remixContext ? '依据公司业务与知识库' : '尚未绑定，请重新策划')}</p>
+              <div className="mt-4 space-y-1 rounded-md border border-input bg-secondary/40 px-3 py-2.5 text-xs" data-testid="image-text-industry-context">
+                <p className="flex items-start gap-2 font-medium"><span aria-hidden="true" className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-primary" /><span>目标行业：{draft.remixContext?.industryProfile?.primaryIndustry || draft.source.sourceHotspot?.industryProfile?.primaryIndustry || (draft.remixContext ? '依据公司业务与知识库' : '尚未绑定，请重新策划')}</span></p>
                 {!!(draft.remixContext?.industryProfile?.subCategories || draft.source.sourceHotspot?.industryProfile?.subCategories)?.length && <p className="mt-1 break-words text-muted-foreground">行业标签：{(draft.remixContext?.industryProfile?.subCategories || draft.source.sourceHotspot?.industryProfile?.subCategories)?.join('、')}</p>}
-                <p className="mt-1 text-muted-foreground">先分析素材与行业的关联，再生成文案和分页。重新策划应用当前行业，优化沿用本稿行业。</p>
               </div>
               {!!draft.notices.length && <details key={draft.id} className="disclosure mt-4 bg-muted/40 p-3" data-testid="image-text-plan-notices">
                 <summary className="cursor-pointer font-medium">策划说明与核对事项</summary>
@@ -223,28 +223,24 @@ export function ImageTextView() {
               </details>}
 
             </div>
-            {!draft.confirmed && <footer className="shrink-0 space-y-2 border-t border-primary/15 bg-accent/30 px-3 py-2 pb-[max(.5rem,env(safe-area-inset-bottom))]">
-              <div className="flex flex-wrap items-center gap-3"><p className="text-xs">共 {draft.pages.length} 张</p><label className="flex items-center gap-2 text-xs">整套图片比例<select className="field w-auto" title={draft.ratioOrigin} aria-describedby="image-text-ratio-help" value={draft.ratio} disabled={busy || uploading} onChange={e => state.updateDraft({ ratio: e.target.value as ImageTextDraft['ratio'], ratioOrigin: '用户在本次确认环节选择整套比例' })}>{IMAGE_RATIOS.map(r => <option key={r}>{r}</option>)}</select></label></div>
+            {!draft.confirmed && <footer className="shrink-0 space-y-2 border-t border-divider bg-surface-muted px-4 py-2 pb-[max(.5rem,env(safe-area-inset-bottom))]">
+              <div className="flex flex-wrap items-center gap-3"><p className="text-xs tabular-nums text-muted-foreground">共 {draft.pages.length} 张</p><label className="flex items-center gap-2 text-xs">整套图片比例<select className="field w-auto" title={draft.ratioOrigin} aria-describedby="image-text-ratio-help" value={draft.ratio} disabled={busy || uploading} onChange={e => state.updateDraft({ ratio: e.target.value as ImageTextDraft['ratio'], ratioOrigin: '用户在本次确认环节选择整套比例' })}>{IMAGE_RATIOS.map(r => <option key={r}>{r}</option>)}</select></label></div>
               <span id="image-text-ratio-help" className="sr-only">{draft.ratioOrigin}</span><span id="image-text-confirm-help" className="sr-only">此处确认前不会调用生图接口；确认后无需逐页确认。</span>
               <Button variant="primary" className="w-full whitespace-normal text-center" title="此处确认前不会调用生图接口；确认后无需逐页确认。" aria-describedby="image-text-confirm-help" disabled={busy || uploading || !draft.pages.length} onClick={() => { void state.confirmAndGenerate(); }}>确认文案、张数及比例，开始生成 {draft.pages.length} 张图片</Button>
             </footer>}
           </Tabs.Root> : <>
             <div role="tablist" aria-label="图文编辑分页" className="tab-list shrink-0 border-b px-2 py-2">{planTabs.map((value, index) => <button key={value} role="tab" aria-selected="false" disabled className="tab opacity-45">{['文案','逐图','风格','素材'][index]}</button>)}</div>
-            <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-4" data-testid="image-text-plan-scroll"><div className="max-w-sm py-8 text-center">
-              <span className="empty-state-icon"><NotebookPen className="h-7 w-7" aria-hidden="true" strokeWidth={1.6} /></span>
-              <p className="text-base font-semibold tracking-tight">从一篇好素材开始</p>
-              <p className="mt-2 muted-copy">提取后，原帖标题、正文和图片文字显示在这里，核对并确认后开始生成。</p>
-              <ol className="mt-5 flex flex-wrap justify-center gap-2" aria-label="图文策划流程">{['提取原帖', '关联行业', '核对策划'].map((step, index) => <li key={step} className="workflow-step"><span className="font-semibold tabular-nums text-primary">{index + 1}</span>{step}</li>)}</ol>
-            </div></div>
+            <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-4" data-testid="image-text-plan-scroll"><ViewfinderEmptyState status="图文策划台 · 待机" title="从一篇好素材开始"
+              description="提取后，原帖标题、正文和图片文字显示在这里，核对并确认后开始生成。"
+              stepsLabel="图文策划流程" steps={['提取原帖', '关联行业', '核对策划']} /></div>
           </>}
         </section>
         <section id="image-text-result" aria-label="图文结果" className={cn('surface min-h-0 flex-col overflow-hidden',mobileStep === 'result' ? 'flex' : 'hidden lg:flex')}>{draft ? <ImageTextResult draft={draft} activePageId={activePageId} onSelect={state.selectPage} busy={busy || uploading} onVersion={(pageId,versionId) => { void state.changeVersion(pageId,versionId).catch(report); }} onReview={(pageId,checked) => { void state.markReviewed(pageId,checked).catch(report); }} onOptimize={draft.confirmed ? startOptimize : undefined} /> : <>
           <div className="shrink-0 border-b px-4 py-2"><h2 className="section-title">图片预览</h2></div>
-          <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-4"><div className="w-full max-w-sm rounded-xl border border-dashed border-primary/20 bg-accent/30 px-5 py-10 text-center" data-testid="image-text-empty">
-              <span className="empty-state-icon"><Images className="h-7 w-7" aria-hidden="true" strokeWidth={1.6} /></span>
-              <p className="text-base font-semibold tracking-tight">图片将在这里呈现</p>
-              <p className="mt-2 muted-copy">先提取链接，核对文案、张数与比例，确认后生成整套图片。</p>
-              <ol className="mt-5 flex flex-wrap justify-center gap-2" aria-label="图片生成流程">{['确认草案', '生成图片', '核对导出'].map((step, index) => <li key={step} className="workflow-step"><span className="font-semibold tabular-nums text-primary">{index + 1}</span>{step}</li>)}</ol>
+          <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-4"><div className="flex w-full self-stretch" data-testid="image-text-empty">
+            <ViewfinderEmptyState status="图片监视器 · 待机" title="图片将在这里呈现"
+              description="先提取链接，核对文案、张数与比例，确认后生成整套图片。"
+              stepsLabel="图片生成流程" steps={['确认草案', '生成图片', '核对导出']} />
             </div></div>
         </>}</section>
     </div>

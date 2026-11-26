@@ -70,6 +70,11 @@ app.on('browser-window-created', (_event, window) => {
         'document.querySelector("form").requestSubmit();');
       await waitFor(window, 'Boolean(document.querySelector("nav button[aria-label=账号管理]"))');
       assert.equal((await call('listHistoryFromDB')).records.length, 0);
+      await waitFor(window, 'Boolean(document.querySelector("[data-testid=script-empty] .viewfinder-grid"))');
+      const visualTheme = await window.webContents.executeJavaScript("(()=>{const root=getComputedStyle(document.documentElement);const empty=document.querySelector('[data-testid=script-empty]');const tab=document.querySelector('[aria-label=脚本视图] [aria-selected=true]');const primary=document.querySelector('[data-testid=extract-video]');const signal=empty?.querySelector('.bg-primary');return{background:root.getPropertyValue('--background').trim(),primary:root.getPropertyValue('--primary').trim(),darkPrimary:!!primary&&getComputedStyle(primary).backgroundColor===getComputedStyle(document.body).color,viewfinder:!!empty?.querySelector('.viewfinder-grid'),cornerMarks:!!empty&&getComputedStyle(empty.querySelector('.viewfinder-grid'),'::before').content==='\"\"',stepCount:empty?.querySelectorAll('ol li').length,neutralTab:!!tab&&getComputedStyle(tab).color===getComputedStyle(document.body).color,signalTab:!!tab&&!!signal&&getComputedStyle(tab,'::after').backgroundColor===getComputedStyle(signal).backgroundColor,legacyEmptyRemoved:!document.querySelector('.empty-state-icon,.workflow-step')};})()");
+      assert.equal(visualTheme.background, '40 14% 96%'); assert.equal(visualTheme.primary, '14 82% 50%');
+      assert.equal(visualTheme.stepCount, 3);
+      assert.ok(visualTheme.darkPrimary && visualTheme.viewfinder && visualTheme.cornerMarks && visualTheme.neutralTab && visualTheme.signalTab && visualTheme.legacyEmptyRemoved, JSON.stringify(visualTheme));
       // 测试响应仅由验收脚本的本地 HTTP/SSE 服务提供，产品只走真实请求。
       const imagePlanningInputs = [];
       const providerServer = http.createServer(async (request, response) => {
@@ -144,6 +149,22 @@ app.on('browser-window-created', (_event, window) => {
       await window.webContents.executeJavaScript('document.querySelector("[data-testid=extract-video]").click()');
       await waitFor(window, 'document.querySelector("[data-testid=editable-transcript]")?.value === "接口验收原始口播"');
       assert.equal((await call('listHistoryFromDB')).records.length,beforeExtract);
+      const composerBounds = () => window.webContents.executeJavaScript(
+        '(() => { const field=document.querySelector("[data-testid=editable-transcript]"); const rect=field.getBoundingClientRect(); const box=field.closest(".composer").getBoundingClientRect(); return { top:rect.top, height:box.height }; })()');
+      const composerBefore = await composerBounds();
+      await window.webContents.executeJavaScript('(() => { const field=document.querySelector("[data-testid=editable-transcript]"); const transfer=new DataTransfer(); transfer.setData("text/plain","拖拽补充素材"); window.uiDropTransfer=transfer; field.dispatchEvent(new DragEvent("dragover",{bubbles:true,cancelable:true,dataTransfer:transfer})); })()');
+      await waitFor(window, 'document.querySelector(".composer[data-dragging=true]") !== null');
+      const composerDragging = await composerBounds();
+      assert.deepEqual(composerDragging, composerBefore, '拖拽提示不得改变输入区位置或高度');
+      await window.webContents.executeJavaScript('document.querySelector("[data-testid=editable-transcript]").dispatchEvent(new DragEvent("drop",{bubbles:true,cancelable:true,dataTransfer:window.uiDropTransfer})); delete window.uiDropTransfer;');
+      await waitFor(window, "document.querySelector(\"[data-testid=editable-transcript]\").value === \"接口验收原始口播\\n拖拽补充素材\"");
+      const composerEdited = await composerBounds();
+      assert.deepEqual(composerEdited, composerBefore, '恢复操作出现时不得推动输入区');
+      await window.webContents.executeJavaScript('Array.from(document.querySelectorAll("button")).find(el=>el.textContent.includes("恢复原始提取")).click()');
+      await waitFor(window, 'document.querySelector("[data-testid=editable-transcript]").value === "接口验收原始口播"');
+      const composerReset = await composerBounds();
+      assert.deepEqual(composerReset, composerBefore, '恢复原稿后输入区应保持原位');
+      const composerLayout = { before:composerBefore, dragging:composerDragging, edited:composerEdited, reset:composerReset };
       await window.webContents.executeJavaScript('const textarea = document.querySelector("[data-testid=editable-transcript]"); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value").set.call(textarea,"人工修订后的企业口播"); textarea.dispatchEvent(new Event("input",{bubbles:true}));');
       await waitFor(window, "document.querySelector('[aria-label=素材编辑]').innerText.includes('已编辑')");
       await window.webContents.executeJavaScript('document.querySelector("[data-testid=generate-script]").click()');
@@ -249,7 +270,7 @@ app.on('browser-window-created', (_event, window) => {
       const layoutEval = (fn, ...args) => window.webContents.executeJavaScript('(' + fn.toString() + ')(' + args.map(value => JSON.stringify(value)).join(',') + ')').catch(error => { throw new Error('布局脚本失败：' + fn.toString(), { cause: error }); });
       const layoutRecord = (id, details) => {
         layoutChecks.push({ id, status: 'PASS', details });
-        fs.writeFileSync(path.join(layoutDirectory, 'layout.json'), JSON.stringify({ date: '2026-11-02', version: require(path.join(applicationPath, 'package.json')).version, packaged: applicationPath.endsWith('.asar'), supplier: 'isolated fixtures', cases: layoutChecks }, null, 2), 'utf8');
+        fs.writeFileSync(path.join(layoutDirectory, 'layout.json'), JSON.stringify({ date: new Date().toISOString().slice(0,10), version: require(path.join(applicationPath, 'package.json')).version, packaged: applicationPath.endsWith('.asar'), supplier: 'isolated fixtures', cases: layoutChecks }, null, 2), 'utf8');
       };
       const captureLayout = async name => {
         await layoutEval(() => document.querySelectorAll("button[aria-label=关闭提示]").forEach(el => el.click()));
@@ -278,6 +299,8 @@ app.on('browser-window-created', (_event, window) => {
         return { width: innerWidth, height: innerHeight, scrollHeight: document.scrollingElement.scrollHeight, scrollWidth: document.documentElement.scrollWidth, confirm: rect(button('确认文案、张数及比例')), pagination: rect(document.querySelector('[aria-label=图片分页]')), preview: rect(document.querySelector('[data-testid=image-text-preview]')), previous: rect(button('上一图')), next: rect(button('下一图')), text: rect(field('图片内文字')), visual: rect(field('画面要求')), retry: rect(button('继续／重试')), cancel: rect(button('取消任务')), progress: rect(document.querySelector('header [role=status]')), selectedTab: document.querySelector('[aria-label=图文编辑分页] [role=tab][aria-selected=true]')?.textContent.trim() };
       });
       const panelProportion = (panel, scroll) => layoutEval((p, s) => { const a = document.querySelector(p).getBoundingClientRect(); const b = document.querySelector(s).getBoundingClientRect(); return { panelHeight: a.height, scrollHeight: b.height, proportion: b.height / a.height, widthProportion: a.width / innerWidth }; }, panel, scroll);
+      layoutRecord('visual-theme-viewfinder-tabs', visualTheme);
+      layoutRecord('composer-edit-drag-reset-stability', composerLayout);
       const assertPagination = bounds => {
         assert.ok(bounds.pagination?.visible && bounds.pagination.y >= bounds.preview.bottom && bounds.pagination.y - bounds.preview.bottom <= 16, JSON.stringify(bounds));
       };
@@ -291,7 +314,9 @@ app.on('browser-window-created', (_event, window) => {
           await resizeLayout(width, height);
           const ratio = await panelProportion('[aria-label=脚本结果]', '[data-testid=script-result-scroll]');
           assert.ok(ratio.proportion >= .8, JSON.stringify(ratio));
-          layoutRecord('R5-workbench-' + width, ratio); await captureLayout('工作台-' + width + 'x' + height);
+          const shotLayout = await layoutEval(()=>{const fields=document.querySelector('.shot-fields');const rects=Array.from(fields.children).map(el=>{const rect=el.getBoundingClientRect();return{x:rect.x,y:rect.y,width:rect.width};});const width=fields.getBoundingClientRect().width;return{width,columns:getComputedStyle(fields).gridTemplateColumns.split(' ').length,aligned:width>=640?rects.every(rect=>Math.abs(rect.y-rects[0].y)<1):rects.every(rect=>Math.abs(rect.x-rects[0].x)<1)};});
+          assert.equal(shotLayout.columns, shotLayout.width >= 640 ? 3 : 1); assert.ok(shotLayout.aligned, JSON.stringify(shotLayout));
+          layoutRecord('R5-workbench-' + width, { ...ratio, shotLayout }); await captureLayout('工作台-' + width + 'x' + height);
         }
         await resizeLayout(1366, 768);
         await layoutEval(() => Array.from(document.querySelectorAll('[aria-label=脚本视图] [role=tab]')).find(el => el.textContent === '拍摄脚本').click());
@@ -335,7 +360,7 @@ app.on('browser-window-created', (_event, window) => {
         await waitFor(window, 'Boolean(document.querySelector("[data-testid=image-text-empty]"))');
         for (const [width, height] of [[1366, 768], [1920, 1080], [390, 844]]) {
           await resizeLayout(width, height);
-          const blank = await layoutEval(() => ({ guidedEmptyStates: document.querySelectorAll('.empty-state-icon').length === 2 && document.querySelectorAll('.workflow-step').length === 6, panels: ['图文策划与确认', '图文结果'].every(label => !!document.querySelector('[aria-label="' + label + '"]')), disabledTabs: Array.from(document.querySelectorAll('[aria-label=图文编辑分页] [role=tab]')).every(el => el.disabled), noConfirm: !Array.from(document.querySelectorAll('button')).some(el => el.textContent.startsWith('确认文案、张数及比例')), noPagination: !document.querySelector('[aria-label=图片分页]'), linkEnabled: !document.querySelector('#image-text-link').disabled, noOverflow: document.documentElement.scrollWidth <= innerWidth }));
+          const blank = await layoutEval(() => ({ guidedEmptyStates: document.querySelectorAll('.viewfinder-grid').length === 2 && Array.from(document.querySelectorAll('.viewfinder-grid')).every(el => el.querySelectorAll('ol li').length === 3 && getComputedStyle(el,'::before').content === '""') && !document.querySelector('.empty-state-icon,.workflow-step'), panels: ['图文策划与确认', '图文结果'].every(label => !!document.querySelector('[aria-label="' + label + '"]')), disabledTabs: Array.from(document.querySelectorAll('[aria-label=图文编辑分页] [role=tab]')).every(el => el.disabled), noConfirm: !Array.from(document.querySelectorAll('button')).some(el => el.textContent.startsWith('确认文案、张数及比例')), noPagination: !document.querySelector('[aria-label=图片分页]'), linkEnabled: !document.querySelector('#image-text-link').disabled, noOverflow: document.documentElement.scrollWidth <= innerWidth }));
           assert.ok(Object.values(blank).every(Boolean), JSON.stringify(blank)); layoutRecord('R2-blank-' + width, blank); await captureLayout('图文空白-' + width + 'x' + height);
         }
         await resizeLayout(1366, 768);

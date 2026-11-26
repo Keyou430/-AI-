@@ -47,7 +47,7 @@ function ProviderModuleCard({ module, initial, onBusyChange }: {
       imageApiKey: input.imageProtocol === provider && input.imageEndpoint === IMAGE_PRESETS[provider].imageEndpoint ? input.imageApiKey : '' });
   }
   const field = (key: 'llmBaseUrl' | 'llmModel' | 'llmApiKey' | 'videoParserEndpoint' | 'videoParserApiKey' | 'imageEndpoint' | 'imageModel' | 'imageApiKey', label: string, secret = false, placeholder = '') =>
-    <label className="block space-y-1.5 text-sm" key={key}>{label}
+    <label className="block space-y-1.5 text-xs font-medium text-muted-foreground" key={key}>{label}
       <input name={key} type={secret ? 'password' : 'text'} autoComplete="off" value={input[key] || ''}
         placeholder={secret ? '留空保留同一服务商已保存的密钥' : placeholder}
         onChange={event => update({ [key]: event.target.value })} className="field" />
@@ -58,12 +58,7 @@ function ProviderModuleCard({ module, initial, onBusyChange }: {
     normalizeAddress(input.imageEndpoint || '') === normalizeAddress(IMAGE_PRESETS[provider].imageEndpoint);
   const extractionPresetActive = (provider: 'linkdigest' | 'yaoan' | 'custom') => input.videoParserProvider === provider &&
     (provider === 'custom' || normalizeAddress(input.videoParserEndpoint) === (provider === 'linkdigest' ? 'https://linkdigest.dev' : 'https://cyanlis.cn'));
-  const presetClass = (active: boolean) => cn(
-    'min-h-10 cursor-pointer rounded-lg border px-3 py-2 text-xs transition-[border-color,background-color,color,box-shadow] duration-150 disabled:cursor-not-allowed disabled:opacity-50',
-    active ? 'border-primary/45 bg-accent font-semibold text-accent-foreground shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.18)]'
-      : 'border-border bg-card text-foreground hover:border-foreground/25 hover:bg-muted/75'
-  );
-  return <form data-provider-module={module} className="space-y-4 rounded-xl border border-border p-4 sm:p-5" noValidate onSubmit={async event => {
+  return <form data-provider-module={module} className="space-y-4 rounded-lg border border-divider bg-surface-muted p-4 sm:p-5" noValidate onSubmit={async event => {
     event.preventDefault(); setBusy(true); onBusyChange(true); setMessage('');
     try {
       const result = await window.electronAPI?.saveProviderModule({ module, config: input });
@@ -74,28 +69,28 @@ function ProviderModuleCard({ module, initial, onBusyChange }: {
     finally { setBusy(false); onBusyChange(false); }
   }}>
     <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold">{moduleTitles[module]}</h3>
-      <span className={cn('rounded-full border px-2.5 py-0.5 text-[11px] font-medium', dirty ? 'border-warning/20 bg-warning/10 text-warning' : configured ? 'border-success/20 bg-success/10 text-success' : 'border-border bg-muted text-muted-foreground')} role="status">{dirty ? '有未保存修改' : configured ? '已配置' : '未配置'}</span>
+      <span className={cn('rounded-md border px-2 py-0.5 text-[11px] font-medium', dirty ? 'border-warning/20 bg-warning/10 text-warning' : configured ? 'border-success/20 bg-success/10 text-success' : 'border-border bg-muted text-muted-foreground')} role="status">{dirty ? '有未保存修改' : configured ? '已配置' : '未配置'}</span>
     </div>
     <fieldset disabled={busy} className="space-y-4">
       <div className="flex flex-wrap gap-2" aria-label={moduleTitles[module] + '快捷配置'}>
-        {module === 'llm' && <><button type="button" className={presetClass(deepseekActive)} aria-pressed={deepseekActive} onClick={() => update({ ...DEEPSEEK_PRESET,
-          llmApiKey: input.llmBaseUrl.replace(/\/+$/, '') === DEEPSEEK_PRESET.llmBaseUrl ? input.llmApiKey : '' })}>使用 DeepSeek 配置</button>
-          <button type="button" className={presetClass(!!input.llmBaseUrl.trim() && !deepseekActive)} aria-pressed={!!input.llmBaseUrl.trim() && !deepseekActive} onClick={() => document.getElementsByName('llmBaseUrl')[0]?.focus()}>自定义接口</button></>}
-        {module === 'image' && <>{(['agnes', 'seedream', 'glm', 'sub2api'] as const).map(provider => <button key={provider} type="button" className={presetClass(imagePresetActive(provider))} aria-pressed={imagePresetActive(provider)}
+        {module === 'llm' && <><Button size="sm" variant="secondary" type="button" aria-pressed={deepseekActive} onClick={() => update({ ...DEEPSEEK_PRESET,
+          llmApiKey: input.llmBaseUrl.replace(/\/+$/, '') === DEEPSEEK_PRESET.llmBaseUrl ? input.llmApiKey : '' })}>使用 DeepSeek 配置</Button>
+          <Button size="sm" variant="secondary" type="button" aria-pressed={!!input.llmBaseUrl.trim() && !deepseekActive} onClick={() => document.getElementsByName('llmBaseUrl')[0]?.focus()}>自定义接口</Button></>}
+        {module === 'image' && <>{(['agnes', 'seedream', 'glm', 'sub2api'] as const).map(provider => <Button size="sm" variant="secondary" key={provider} type="button" aria-pressed={imagePresetActive(provider)}
           onClick={() => imagePreset(provider)}>
-          使用 {provider === 'agnes' ? 'Agnes' : provider === 'seedream' ? 'Seedream' : provider === 'glm' ? 'GLM' : 'Sub2API（异步生图）'} 配置</button>)}</>}
-        {module === 'extraction' && <><button type="button" className={presetClass(extractionPresetActive('linkdigest'))} aria-pressed={extractionPresetActive('linkdigest')} onClick={() => extractionPreset('linkdigest')}>使用 LinkDigest 配置</button>
-          <button type="button" className={presetClass(extractionPresetActive('yaoan'))} aria-pressed={extractionPresetActive('yaoan')} onClick={() => extractionPreset('yaoan')}>使用姚安配置</button>
-          <button type="button" className={presetClass(extractionPresetActive('custom'))} aria-pressed={extractionPresetActive('custom')} onClick={() => extractionPreset('custom')}>自定义接口</button></>}
+          使用 {provider === 'agnes' ? 'Agnes' : provider === 'seedream' ? 'Seedream' : provider === 'glm' ? 'GLM' : 'Sub2API（异步生图）'} 配置</Button>)}</>}
+        {module === 'extraction' && <><Button size="sm" variant="secondary" type="button" aria-pressed={extractionPresetActive('linkdigest')} onClick={() => extractionPreset('linkdigest')}>使用 LinkDigest 配置</Button>
+          <Button size="sm" variant="secondary" type="button" aria-pressed={extractionPresetActive('yaoan')} onClick={() => extractionPreset('yaoan')}>使用姚安配置</Button>
+          <Button size="sm" variant="secondary" type="button" aria-pressed={extractionPresetActive('custom')} onClick={() => extractionPreset('custom')}>自定义接口</Button></>}
       </div>
       <div className="grid gap-4 md:grid-cols-2">
-        {module === 'llm' && <><label className="block space-y-1.5 text-sm">接口类型<input className="field" value="OpenAI 协议" readOnly /></label>
+        {module === 'llm' && <><label className="block space-y-1.5 text-xs font-medium text-muted-foreground">接口类型<input className="field" value="OpenAI 协议" readOnly /></label>
           {field('llmBaseUrl', '接口地址', false, '填写模型服务的基础地址')}{field('llmModel', '模型名称')}{field('llmApiKey', 'API Key', true)}</>}
-        {module === 'image' && <><label className="block space-y-1.5 text-sm">图片厂商
+        {module === 'image' && <><label className="block space-y-1.5 text-xs font-medium text-muted-foreground">图片厂商
           <select name="imageProtocol" className="field" value={input.imageProtocol} onChange={event => imagePreset(event.target.value as NonNullable<ProviderSettingsInput['imageProtocol']>)}>
             <option value="agnes">Agnes</option><option value="seedream">Seedream</option><option value="glm">GLM</option><option value="sub2api">Sub2API（异步生图）</option>
           </select></label>{field('imageEndpoint', '接口完整地址')}{field('imageModel', '模型名称')}{field('imageApiKey', 'API Key', true)}</>}
-        {module === 'extraction' && <><label className="block space-y-1.5 text-sm">接口类型
+        {module === 'extraction' && <><label className="block space-y-1.5 text-xs font-medium text-muted-foreground">接口类型
           <select name="videoParserProvider" className="field" value={input.videoParserProvider} onChange={event => extractionPreset(event.target.value as NonNullable<ProviderSettingsInput['videoParserProvider']>)}>
             <option value="custom">自定义提取协议</option><option value="linkdigest">LinkDigest</option><option value="yaoan">姚安</option>
           </select></label>{field('videoParserEndpoint', input.videoParserProvider === 'custom' ? '接口完整地址' : '接口基础地址')}{field('videoParserApiKey', 'API Key', true)}</>}

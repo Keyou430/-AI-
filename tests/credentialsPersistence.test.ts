@@ -49,3 +49,21 @@ test('关键词修改后重新载入保留，清空存储的新设备关键词�
   assert.equal(fresh.getState().settings.llmBaseUrl, ''); assert.equal(fresh.getState().settings.llmModel, '');
   memory.set(storageKey, saved);
 });
+
+test('旧缓存中的默认运镜文案恢复为空，手动运镜及其他配置继续保留', async () => {
+  const legacyCameraWork = '前3秒黄金钩子破题吸引眼球，中段对比打消疑虑，尾段号召互动转化。';
+  for (const version of [0, 2, 3]) {
+    for (const userCameraWork of [legacyCameraWork, `  ${legacyCameraWork}  `, '近景俯拍、特写推进']) {
+      useAppStore.setState({ userCameraWork: '' });
+      memory.set(storageKey, JSON.stringify({ version, state: { userCameraWork, targetDurationSec: 36,
+        settings: { llmModel: 'retained-model' } } }));
+      await useAppStore.persist.rehydrate();
+      await new Promise<void>(resolve => queueMicrotask(resolve));
+      const expected = userCameraWork.trim() === legacyCameraWork ? '' : userCameraWork;
+      assert.equal(useAppStore.getState().userCameraWork, expected);
+      assert.equal(useAppStore.getState().targetDurationSec, 36);
+      assert.equal(useAppStore.getState().settings.llmModel, 'retained-model');
+      assert.equal(JSON.parse(memory.get(storageKey)!).state.userCameraWork, expected);
+    }
+  }
+});

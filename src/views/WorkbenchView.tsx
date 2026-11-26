@@ -319,83 +319,83 @@ export const WorkbenchView: React.FC = () => {
   const busy = isParsingVideo || isGeneratingScript;
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
-      <header className="shrink-0 border-b bg-card px-4 py-4 md:px-6">
-        <div className="mb-3 flex items-center justify-between">
-          <h1 className="text-sm font-semibold tracking-tight">创作工作台</h1>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="relative min-w-0 flex-1">
-            <Link2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <label htmlFor="source-video-url" className="sr-only">
-              素材分享链接
-            </label>
-            <input
-              ref={linkInputRef}
-              id="source-video-url"
-              name="sourceVideoUrl"
-              type="text"
-              value={linkInput}
-              disabled={busy}
-              onChange={(event) => { setLinkInput(event.target.value); updateParseError(null); }}
-              onPaste={(event) => {
-                const input = event.currentTarget;
-                const text = event.clipboardData.getData('text/plain');
-                const next = input.value.slice(0, input.selectionStart ?? 0) + text + input.value.slice(input.selectionEnd ?? input.value.length);
-                setParseError(getVideoLinkError(next));
-              }}
-              placeholder="粘贴抖音或小红书分享链接"
-              className="field h-11 pl-9 pr-12"
-              onKeyDown={(event) => {
-                if (
-                  !event.nativeEvent.isComposing &&
-                  event.key === 'Enter' &&
-                  linkInput.trim() &&
-                  !busy
-                ) {
+      <header className="shrink-0 border-b bg-card px-4 py-3 md:px-6">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <h1 className="shrink-0 text-sm font-semibold tracking-tight">创作工作台</h1>
+          <div className="flex min-w-0 basis-full items-center gap-2 md:basis-0 md:flex-1">
+            <div className="relative min-w-0 flex-1">
+              <Link2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <label htmlFor="source-video-url" className="sr-only">
+                素材分享链接
+              </label>
+              <input
+                ref={linkInputRef}
+                id="source-video-url"
+                name="sourceVideoUrl"
+                type="text"
+                value={linkInput}
+                disabled={busy}
+                onChange={(event) => { setLinkInput(event.target.value); updateParseError(null); }}
+                onPaste={(event) => {
+                  const input = event.currentTarget;
+                  const text = event.clipboardData.getData('text/plain');
+                  const next = input.value.slice(0, input.selectionStart ?? 0) + text + input.value.slice(input.selectionEnd ?? input.value.length);
+                  setParseError(getVideoLinkError(next));
+                }}
+                placeholder="粘贴抖音或小红书分享链接"
+                className="field h-11 pl-9 pr-12"
+                onKeyDown={(event) => {
+                  if (
+                    !event.nativeEvent.isComposing &&
+                    event.key === 'Enter' &&
+                    linkInput.trim() &&
+                    !busy
+                  ) {
+                    event.preventDefault();
+                    void handleExtractOnly();
+                  }
+                }}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
                   event.preventDefault();
-                  void handleExtractOnly();
-                }
-              }}
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={(event) => {
-                event.preventDefault();
-                if (!busy) {
-                  const text = event.dataTransfer.getData('text/plain');
-                  acceptPastedLink(text);
-                }
-              }}
-            />
+                  if (!busy) {
+                    const text = event.dataTransfer.getData('text/plain');
+                    acceptPastedLink(text);
+                  }
+                }}
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={linkInput ? '清除链接' : '粘贴链接'}
+                title={linkInput ? '清除链接' : '粘贴链接'}
+                disabled={busy}
+                onClick={() => {
+                  if (linkInput) {
+                    setLinkInput('');
+                    linkInputRef.current?.focus();
+                  } else {
+                    void handlePasteFromClipboard();
+                  }
+                }}
+                className="absolute right-0 top-0"
+              >
+                {linkInput ? <X /> : <ClipboardPaste />}
+              </Button>
+            </div>
             <Button
-              variant="ghost"
-              size="icon"
-              aria-label={linkInput ? '清除链接' : '粘贴链接'}
-              title={linkInput ? '清除链接' : '粘贴链接'}
-              disabled={busy}
-              onClick={() => {
-                if (linkInput) {
-                  setLinkInput('');
-                  linkInputRef.current?.focus();
-                } else {
-                  void handlePasteFromClipboard();
-                }
-              }}
-              className="absolute right-0 top-0"
+              variant="primary"
+              data-testid="extract-video"
+              onClick={handleExtractOnly}
+              disabled={busy || !linkInput.trim()}
+              title="再次提取会重新调用厂商接口"
             >
-              {linkInput ? <X /> : <ClipboardPaste />}
+              {isParsingVideo ? <LoaderCircle className="animate-spin" /> : null}
+              {isParsingVideo ? '提取中' : '提取文案'}
             </Button>
           </div>
-          <Button
-            variant="primary"
-            data-testid="extract-video"
-            onClick={handleExtractOnly}
-            disabled={busy || !linkInput.trim()}
-            title="再次提取会重新调用厂商接口"
-          >
-            {isParsingVideo ? <LoaderCircle className="animate-spin" /> : null}
-            {isParsingVideo ? '提取中' : '提取文案'}
-          </Button>
         </div>
-        <details className="mt-3 text-xs text-muted-foreground">
+        <details className="mt-2 text-xs text-muted-foreground">
           <summary className="w-fit cursor-pointer py-1">
             生成选项 <span className="ml-2 tabular-nums">{targetDurationSec} 秒</span>
           </summary>
@@ -520,7 +520,7 @@ export const WorkbenchView: React.FC = () => {
                   : '粘贴链接或直接输入'}
             </span>
           </div>
-          <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
             {isParsingVideo && (
               <div role="status" className="status-note">
                 <LoaderCircle className="h-4 w-4 shrink-0 animate-spin" />
@@ -529,11 +529,11 @@ export const WorkbenchView: React.FC = () => {
             )}
             {parsedVideo && (
               <>
-                <div>
-                  <h3 className="truncate text-sm font-medium" title={parsedVideo.title}>
+                <div className="flex min-w-0 items-baseline justify-between gap-3">
+                  <h3 className="min-w-0 flex-1 truncate text-sm font-medium" title={parsedVideo.title}>
                     {parsedVideo.title}
                   </h3>
-                  <p className="mt-1 text-xs text-muted-foreground">
+                  <p className="max-w-[45%] truncate text-xs tabular-nums text-muted-foreground" title={parsedVideo.author}>
                     {parsedVideo.author}{parsedVideo.sourceHotspot ? ' · 热点话题，尚未提取原帖' : ''}
                     {parsedVideo.durationSec > 0 && ' · ' + parsedVideo.durationSec + ' 秒'}
                   </p>
@@ -543,54 +543,47 @@ export const WorkbenchView: React.FC = () => {
                     {transcriptionNotice}
                   </p>
                 )}
-                <details className="disclosure">
-                  <summary>原始素材</summary>
-                  <div className="mt-3 space-y-4">
-                    <div>
-                      <h4 className="field-label">发布文案</h4>
-                      <p data-testid="published-text" className="reading-text">
-                        {parsedVideo.publishedText || '未返回发布文案'}
-                      </p>
-                    </div>
-                    {!imageTextContent && (
-                      <div>
-                        <h4 className="field-label">原始口播</h4>
-                        <p data-testid="original-transcript" className="reading-text">
-                          {parsedVideo.transcript || '未取得口播文字'}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </details>
-                <ExtractedContentDetails content={parsedVideo} onUseText={setEditedTranscript} />
               </>
             )}
-            <div>
-              <Composer
-                label={imageTextContent ? '图文文案' : '口播文案'}
-                data-testid="editable-transcript"
-                value={editedTranscript}
-                onValueChange={setEditedTranscript}
-                busy={busy}
-                onSubmit={() => {
-                  void handleManualStartGenerate();
-                }}
-                placeholder={imageTextContent
-                  ? '正文与图片文字已填入，可结合素材关键词核对修改后再二创。'
-                  : '在这里核对提取的口播，或直接输入你想改写的文案。'}
-                minHeight={180}
-                maxHeight={480}
-                hint="核对人名、品牌与数字后再生成"
-              />
-              {isManuallyEdited && (
-                <div className="mt-1 flex justify-end">
-                  <Button size="sm" variant="ghost" disabled={busy} onClick={resetEditedToOriginal}>
-                    <RotateCcw />
-                    恢复原始提取
-                  </Button>
+            <Composer
+              label={imageTextContent ? '图文文案' : '口播文案'}
+              data-testid="editable-transcript"
+              value={editedTranscript}
+              onValueChange={setEditedTranscript}
+              busy={busy}
+              headerAction={isManuallyEdited ? <Button size="sm" variant="ghost" disabled={busy} onClick={resetEditedToOriginal} className="h-8 min-h-8 px-2 text-xs"><RotateCcw />恢复原始提取</Button> : undefined}
+              onSubmit={() => {
+                void handleManualStartGenerate();
+              }}
+              placeholder={imageTextContent
+                ? '正文与图片文字已填入，可结合素材关键词核对修改后再二创。'
+                : '在这里核对提取的口播，或直接输入你想改写的文案。'}
+              minHeight={180}
+              maxHeight={480}
+              hint="核对人名、品牌与数字后再生成"
+            />
+            {parsedVideo && <div className="space-y-3">
+              <details className="disclosure">
+                <summary>原始素材</summary>
+                <div className="mt-3 space-y-4">
+                  <div>
+                    <h4 className="field-label">发布文案</h4>
+                    <p data-testid="published-text" className="reading-text">
+                      {parsedVideo.publishedText || '未返回发布文案'}
+                    </p>
+                  </div>
+                  {!imageTextContent && (
+                    <div>
+                      <h4 className="field-label">原始口播</h4>
+                      <p data-testid="original-transcript" className="reading-text">
+                        {parsedVideo.transcript || '未取得口播文字'}
+                      </p>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </details>
+              <ExtractedContentDetails content={parsedVideo} onUseText={setEditedTranscript} />
+            </div>}
             <details className="disclosure" open={editedVisualSummary.trim() ? true : undefined}>
               <summary>
                 画面描述 <span className="ml-1 font-normal text-muted-foreground">可选</span>
@@ -609,7 +602,7 @@ export const WorkbenchView: React.FC = () => {
               />
             </details>
           </div>
-          <footer className="shrink-0 border-t bg-card p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <footer className="shrink-0 border-t bg-surface-muted px-4 py-3 pb-[max(.75rem,env(safe-area-inset-bottom))]">
             <Button
               variant="primary"
               className="w-full"

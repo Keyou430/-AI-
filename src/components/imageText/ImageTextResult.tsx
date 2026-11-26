@@ -18,7 +18,7 @@ export function ImageAssetPreview({ id, alt, className = 'max-h-[65vh]', style }
     }).catch(() => { if (active) setError('图片读取失败，请检查本机存储。'); });
     return () => { active = false; };
   }, [id]);
-  return image && image.id === id ? <img src={image.url} alt={alt} style={style} className={className + ' w-full object-contain'} />
+  return image && image.id === id ? <img src={image.url} alt={alt} style={style} className={className + ' w-full object-contain outline outline-1 -outline-offset-1 outline-black/10'} />
     : <p role="status" className="p-8 text-center text-sm text-muted-foreground">{error || (id ? '正在读取图片…' : '确认后将在这里生成图片')}</p>;
 }
 export function ImageTextResult({ draft, activePageId, onSelect, onOptimize, onVersion, onReview, busy = false, showPublication = false }: {
@@ -44,7 +44,7 @@ export function ImageTextResult({ draft, activePageId, onSelect, onOptimize, onV
     const next = event.key === 'ArrowLeft' ? index - 1 : event.key === 'ArrowRight' ? index + 1 : -1;
     if (next >= 0 && next < draft.pages.length) { event.preventDefault(); onSelect(draft.pages[next].id); }
   }}>
-    <div className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-2">
+    <div className="flex shrink-0 items-center justify-between gap-2 border-b border-divider bg-surface-muted px-4 py-2">
       {page && <>
         <p className="muted-copy">整套比例 {draft.ratio} · {page.assetId && page.renderedKey === pageRenderKey(draft, page) ? '已生成' : page.assetId ? '内容已更新，等待重生成' : '尚未生成'}</p>
         {onOptimize && <Button size="sm" disabled={busy} onClick={() => onOptimize(page.id)}><WandSparkles />图片优化</Button>}
@@ -52,14 +52,14 @@ export function ImageTextResult({ draft, activePageId, onSelect, onOptimize, onV
     </div>
     <div className="min-h-0 flex-1 overflow-hidden p-3" data-testid="image-text-result-scroll">
       {page ? <div className={wide && showDetails ? 'grid h-full min-h-0 gap-4 grid-cols-[minmax(0,1fr)_minmax(220px,.7fr)]' : 'flex h-full min-h-0 flex-col gap-3'}>
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden" data-testid="image-text-image-column">
-          <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-md border bg-muted/30" data-testid="image-text-preview">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden" data-testid="image-text-image-column">
+          <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-md border border-divider bg-surface-muted" data-testid="image-text-preview">
             {page.assetId ? <ImageAssetPreview id={page.assetId} alt={'第 ' + (index + 1) + ' 张图文：' + page.text} className="h-full min-h-0 max-h-full" /> : <div className="max-h-full space-y-2 overflow-y-auto p-4 text-center">
               <p className="reading-text">{page.text || '本图文字待填写'}</p>
               <p className="muted-copy">确认后将在这里生成图片。{draft.ratioOrigin} 此处确认前不会调用生图接口；确认后无需逐页确认。</p>
             </div>}
           </div>
-          {draft.pages.length > 1 && <div className="flex shrink-0 items-center justify-center gap-2" aria-label="图片分页">
+          {draft.pages.length > 1 && <div className="flex shrink-0 items-center justify-center gap-1.5 rounded-md bg-surface-muted px-1 py-1 tabular-nums" aria-label="图片分页">
             <Button size="sm" disabled={index <= 0} onClick={() => onSelect(draft.pages[index - 1].id)}><ChevronLeft />上一图</Button>
             <label className="min-w-0 text-xs"><span className="sr-only">当前图片</span>
               <select aria-label="选择图片" className="field inline-block w-auto min-w-0" value={page.id} onChange={event => onSelect(event.target.value)}>
@@ -69,7 +69,7 @@ export function ImageTextResult({ draft, activePageId, onSelect, onOptimize, onV
             <Button size="sm" disabled={index >= draft.pages.length - 1} onClick={() => onSelect(draft.pages[index + 1].id)}>下一图<ChevronRight /></Button>
           </div>}
         </div>
-        {showDetails && <div className={'min-h-0 min-w-0 space-y-3 overflow-y-auto ' + (wide ? '' : 'max-h-[45%] shrink-0')} data-testid="image-text-detail-scroll">
+        {showDetails && <div className={'min-h-0 min-w-0 space-y-3 overflow-y-auto rounded-md border border-divider bg-surface-muted p-3 ' + (wide ? '' : 'max-h-[45%] shrink-0')} data-testid="image-text-detail-scroll">
           {showPublication && <div className="space-y-3">
             <h2 className="section-title">{draft.title}</h2><p className="reading-text">{draft.body}</p>
             <p className="muted-copy">{draft.tags.map(t => '#' + t.replace(/^#+/, '')).join(' ')}</p>
@@ -78,7 +78,7 @@ export function ImageTextResult({ draft, activePageId, onSelect, onOptimize, onV
             <summary>本图文字与画面要求</summary>
             <div className="mt-3 space-y-2"><p className="reading-text">{page.text}</p><p className="muted-copy whitespace-pre-wrap">画面：{page.visual}</p></div>
           </details>
-          {onVersion && <label className="block text-xs">页面版本<select aria-label="页面版本" disabled={busy} className="field mt-1.5" value={page.currentVersionId || ''} onChange={e => onVersion(page.id,e.target.value)}>
+          {onVersion && <label className="block text-xs font-medium text-muted-foreground">页面版本<select aria-label="页面版本" disabled={busy} className="field mt-1.5" value={page.currentVersionId || ''} onChange={e => onVersion(page.id,e.target.value)}>
             {!page.currentVersionId && <option value="">尚无成功版本</option>}
             {(draft.versions || []).filter(v => v.pageId === page.id).map((v,i) => <option key={v.id} value={v.id}>{i+1} · {new Date(v.createdAt).toLocaleString()} · {v.text.slice(0,24)} · {v.visual.slice(0,20)}</option>)}
           </select></label>}
